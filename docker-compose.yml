@@ -1,0 +1,36 @@
+# https://ashwin9798.medium.com/nginx-with-docker-and-node-js-a-beginners-guide-434fe1216b6b
+
+version: '3'
+services:
+  nginx:
+    image: nginx:latest
+    ports:
+      - '18080:80'
+    volumes:
+      - ./nginx:/etc/nginx/conf.d:ro
+    restart: always
+    depends_on: 
+      - socket
+      - token
+  socket:
+    build:
+      context: ./app
+    init: true
+    ports:
+     - '5000:5000'
+    environment:
+      - PORT=5000
+    command:
+      - node
+      - index.js
+  token:
+    build:
+      context: ./app
+    init: true
+    ports:
+     - '5001:5001'
+    environment:
+      - PORT=5001
+    command:
+      - node
+      - token.js
