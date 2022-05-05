@@ -25,7 +25,7 @@ $ docker-compose up
 #### トークンの取得
 
 ```js
-$ curl localhost:18080/kabusapi/token
+$ curl -X POST localhost:18080/kabusapi/token
 {"ResultCode":0,"Token":"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}
 ```
 
