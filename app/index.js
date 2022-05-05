@@ -4,7 +4,8 @@
 
 const WebSocket = require('ws');
 const wss = new WebSocket.Server({
-  port: process.env.PORT
+  host: process.env.HOST,
+  port: process.env.PORT,
 });
 
 const output = (() => {
@@ -144,6 +145,11 @@ const send = (ws => {
   ws.send(msg)
   setTimeout(() => send(ws), delay)
 });
+
+wss.on('close', function incoming(event) {
+  console.log(event);
+  console.log('close');
+})
 
 wss.on('connection', async function connection(ws) {
   ws.send(JSON.stringify(output()));
