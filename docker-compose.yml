@@ -13,6 +13,24 @@ services:
     depends_on: 
       - socket
       - token
+
+  recorder:
+    tty: true
+    stdin_open: true
+    build:
+      context: ./recorder
+    environment:
+      - PROTOCOL=$PROTOCOL
+      - HOST=$HOST
+      - PORT=$PORT
+    volumes:
+      - ./recorder:/app:cached
+    command:
+      - bundle
+      - exec
+      - ruby
+      - recorder.rb
+
   socket:
     build:
       context: ./app
@@ -24,6 +42,7 @@ services:
     command:
       - node
       - index.js
+
   token:
     build:
       context: ./app
