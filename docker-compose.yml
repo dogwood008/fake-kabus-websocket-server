@@ -23,13 +23,12 @@ services:
       - PROTOCOL=$PROTOCOL
       - HOST=$HOST
       - PORT=$PORT
+      - WEBSOCKET_PATH=$WEBSOCKET_PATH
     volumes:
       - ./recorder:/app:cached
     command:
-      - bundle
-      - exec
-      - ruby
-      - recorder.rb
+      - node
+      - index.js
 
   socket:
     build:
