@@ -1,0 +1,16 @@
+{
+  "name": "fake-kabus-websocket-recorder",
+  "version": "1.0.0",
+  "description": "Mock the response of kabu STATION PUSH API",
+  "main": "index.js",
+  "type": "module",
+  "dependencies": {
+    "pg": "^8.7.3",
+    "ws": "^8.2.2"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "dogwood008",
+  "license": "MIT"
+}

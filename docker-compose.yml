@@ -1,6 +1,10 @@
 # https://ashwin9798.medium.com/nginx-with-docker-and-node-js-a-beginners-guide-434fe1216b6b
 
-version: '3'
+x-db-settings: &DB_SETTINGS
+  POSTGRES_USER: postgres
+  POSTGRES_PASSWORD: postgres
+  POSTGRES_PORT: '5432'
+  POSTGRES_HOST: db
 services:
   nginx:
     image: nginx:latest
@@ -13,6 +17,36 @@ services:
     depends_on: 
       - socket
       - token
+
+  db:
+    image: 'postgres:14.3'
+    environment:
+      << : *DB_SETTINGS
+      PGDATA: /var/lib/postgresql/data
+    volumes:
+      - ./postgresql/data14:/var/lib/postgresql/data:delegated
+    ports:
+      - '5432:5432'
+
+  recorder:
+    tty: true
+    stdin_open: true
+    build:
+      context: ./recorder
+    environment:
+      PROTOCOL: $PROTOCOL
+      HOST: $HOST
+      PORT: $PORT
+      WEBSOCKET_PATH: $WEBSOCKET_PATH
+      << : *DB_SETTINGS
+    volumes:
+      - ./recorder:/app:cached
+    command:
+      - node
+      - index.js
+    depends_on: 
+      - db
+
   socket:
     build:
       context: ./app
@@ -24,6 +58,7 @@ services:
     command:
       - node
       - index.js
+
   token:
     build:
       context: ./app
