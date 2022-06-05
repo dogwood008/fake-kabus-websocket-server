@@ -8,6 +8,9 @@ const wss = new WebSocket.Server({
   port: process.env.PORT,
 });
 
+// https://note.kiriukun.com/entry/20191124-iso-8601-in-javascript
+const currentTime = () => new Date().toISOString().split('Z')[0] + '+09:00';
+
 const output = (() => {
   return {
     "OverSellQty": 187600, // OVER気配数量
@@ -20,7 +23,7 @@ const output = (() => {
     "Exchange": 1, // 市場コード
     "ExchangeName": "東証１部", // 市場名称
     "TradingVolume": 476400, // 売買高
-    "TradingVolumeTime": "2021-09-10T11:12:13+09:00", // 売買高時刻
+    "TradingVolumeTime": currentTime(), // 売買高時刻
     "VWAP": 54702.097, // 売買高加重平均価格(VWAP)
     "TradingValue": 26060079000, // 売買代金
     "BidQty": 600, // 最良売気配数量
@@ -116,7 +119,7 @@ const output = (() => {
     "Symbol": "7974", // 銘柄コード
     "SymbolName": "任天堂", // 銘柄名
     "CurrentPrice": 54850, // 現値
-    "CurrentPriceTime": "2021-09-10T11:12:13+09:00", // 現値時刻
+    "CurrentPriceTime": currentTime(), // 現値時刻
     "CurrentPriceChangeStatus": "0056", // 現値前値比較
     "CurrentPriceStatus": 1, // 現値ステータス
     "CalcPrice": 54850, // 計算用現値
@@ -140,10 +143,10 @@ const randomSeconds = (() => {
 
 const send = (ws => {
   const msg = JSON.stringify(output());
-  const delay = randomSeconds();
-  console.log(delay)
+  const randomDelay = randomSeconds();
+  console.log(randomDelay)
   ws.send(msg)
-  setTimeout(() => send(ws), delay)
+  setTimeout(() => send(ws), randomDelay)  // 終了するまで無限ループ
 });
 
 wss.on('close', function incoming(event) {
@@ -152,6 +155,5 @@ wss.on('close', function incoming(event) {
 })
 
 wss.on('connection', async function connection(ws) {
-  ws.send(JSON.stringify(output()));
   send(ws);
 });
