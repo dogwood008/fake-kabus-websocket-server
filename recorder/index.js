@@ -68,7 +68,7 @@ async function initPg() {
     port: process.env.POSTGRES_PORT,
   });
   const connect = await pool.connect();
-  const createDbSqlStatement = createDbSql('websocket_messages');
+  const createDbSqlStatement = createDbSql(process.env.POSTGRES_DB_NAME);
   console.log(createDbSqlStatement)
   await connect.query(createDbSqlStatement);
   for(const stockCode of ['7974']) {
