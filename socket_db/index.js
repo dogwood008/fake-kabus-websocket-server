@@ -8,36 +8,46 @@ const wss = new WebSocketServer({
   port: process.env.PORT,
 });
 
-import pg from 'pg';
-const { Pool } = pg;
 const debug = !!process.env.DEBUG;
 
-const initPg = async () => {
-  const pool = new Pool({
-    host: process.env.POSTGRES_HOST,
-    user: process.env.POSTGRES_USER,
-    password: process.env.POSTGRES_PASSWORD,
-    port: process.env.POSTGRES_PORT,
-    database: process.env.POSTGRES_DB_NAME,
-  });
-  const connect = await pool.connect();
-  return { pool, connect };
+class SQLExecuter {
+  // DBで最も最初に存在するDateTime
+  static async firstDtInDB (dbManager, stockCode) {
+    const client = await dbManager.client();
+    return (await client.query(`
+        SELECT datetime from stock_${stockCode}_raw
+          ORDER BY id DESC
+          LIMIT 1;`)).rows[0].datetime;
+  }
 }
 
-// DBで最も最初に存在するDateTime
-const firstDtInDB = async (stockCode, pool) => {
-  return (await pool.query(`
-      SELECT datetime from stock_${stockCode}_raw
-        ORDER BY id DESC
-        LIMIT 1;`)).rows[0].datetime;
+import pg from 'pg';
+const { Pool } = pg;
+class DBManager {
+  constructor({host, user, password, port, database }) {
+    host = host || process.env.POSTGRES_HOST
+    user = user || process.env.POSTGRES_USER
+    password = password || process.env.POSTGRES_PASSWORD
+    port = port || process.env.POSTGRES_PORT
+    database = database || process.env.POSTGRES_DB_NAME
+
+    this.pool = new Pool({ host, user, password, port, database });
+    this.connect = null;
+  }
+  async client() {
+    if (!this.connect) {
+      this.connect = await this.pool.connect();
+    }
+    return this.connect;
+  }
 }
 
 const main = async () => {
-  const { pool, connect } = await initPg();
+  const dbman = new DBManager({});
   const stockCode = 7974;
 
   try{
-    const firstDtinDB = await firstDtInDB(stockCode, pool);
+    const firstDtinDB = await SQLExecuter.firstDtInDB(dbman, stockCode);
     console.log(firstDtinDB)
 
   //const from = '2022-01-01';
