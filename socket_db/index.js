@@ -24,11 +24,33 @@ const initPg = async () => {
   return { pool, connect };
 }
 
+// DBで最も最初に存在するDateTime
+const firstDtInDB = async (stockCode, pool) => {
+  return (await pool.query(`
+      SELECT datetime from stock_${stockCode}_raw
+        ORDER BY id DESC
+        LIMIT 1;`)).rows[0].datetime;
+}
+
 const main = async () => {
   const { pool, connect } = await initPg();
   const stockCode = 7974;
-  const result = await pool.query(`SELECT * from stock_${stockCode}_raw LIMIT 10;`);
-  console.log(result);
+
+  try{
+    const firstDtinDB = await firstDtInDB(stockCode, pool);
+    console.log(firstDtinDB)
+
+  //const from = '2022-01-01';
+  //const to = '2022-01-02';
+  //const result = await connect.query(`
+  //  SELECT * from stock_${stockCode}_raw
+  //    WHERE datetime >= $1 AND datetime <= $2
+  //    ORDER BY id DESC;
+  //`, from, to);
+  //console.log(result);
+  } catch (e) {
+    console.error(e);
+  }
 }
 
 (async () => {
