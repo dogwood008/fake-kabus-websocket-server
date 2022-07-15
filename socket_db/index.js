@@ -36,8 +36,8 @@ class SQLExecuter {
 }
 
 import pg from 'pg';
-import { addMinutes } from 'date-fns'
-import { Observable } from 'rxjs';
+import { addMinutes, addSeconds } from 'date-fns'
+import { Observable, from, interval, map } from 'rxjs';
 
 const { Pool } = pg;
 class DBManager {
@@ -69,6 +69,11 @@ const main = async () => {
     console.log(firstDtinDB);
     const result = await SQLExecuter.recordsWithinOneMinuteAfter(dbman, stockCode, firstDtinDB);
     console.log(result)
+
+    interval(1000 * 1).pipe(map(secs => addSeconds(firstDtinDB, secs)))  // 毎秒現在時刻を進める
+      .subscribe(async (dt) => {
+        console.log(dt)
+      })
 
 
   //const from = '2022-01-01';
