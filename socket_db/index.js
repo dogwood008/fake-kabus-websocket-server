@@ -21,11 +21,9 @@ class SQLExecuter {
           LIMIT 1;`, [fromDt])).rows[0].datetime;
   }
 
-  static async recordsWithinOneMinuteAfter (dbManager, stockCode, fromDt) {
+  static async recordsWithinSecondsAfter (dbManager, stockCode, fromDt, seconds) {
     const client = await dbManager.client();
-    const minutes = 1;
-    const until = addMinutes(new Date(fromDt), minutes);
-    console.log(until)
+    const until = addSeconds(new Date(fromDt), seconds);
     return (await client.query(`
         SELECT * from stock_${stockCode}_raw
           WHERE datetime >= $1
@@ -37,7 +35,7 @@ class SQLExecuter {
 
 import pg from 'pg';
 import { addMinutes, addSeconds } from 'date-fns'
-import { Observable, from, interval, map } from 'rxjs';
+import { Observable, from, interval, map, delay, count, tap, switchMap } from 'rxjs';
 
 const { Pool } = pg;
 class DBManager {
@@ -59,6 +57,17 @@ class DBManager {
   }
 }
 
+const convertSQLResultToHash = (result) => {
+  const hash = {};
+  result.forEach(row => {
+    const dtStr = row.datetime.toISOString()
+    const val = hash[dtStr] ? hash[dtStr] : [];
+    val.push(row.data);
+    hash[dtStr] = val;
+  });
+  return hash;
+}
+
 const main = async () => {
   const dbman = new DBManager({});
   const stockCode = 7974;
@@ -67,14 +76,42 @@ const main = async () => {
     const fromDt = '2022-06-21T09:00:00';
     const firstDtinDB = await SQLExecuter.firstDtInDB(dbman, stockCode, fromDt);
     console.log(firstDtinDB);
-    const result = await SQLExecuter.recordsWithinOneMinuteAfter(dbman, stockCode, firstDtinDB);
-    console.log(result)
+    const result = await SQLExecuter.recordsWithinSecondsAfter(dbman, stockCode, firstDtinDB, 10);
 
-    interval(1000 * 1).pipe(map(secs => addSeconds(firstDtinDB, secs)))  // 毎秒現在時刻を進める
-      .subscribe(async (dt) => {
-        console.log(dt)
+    const queue = convertSQLResultToHash(result);
+
+    interval(1000 * 1)
+      .pipe(
+        map(secs => addSeconds(firstDtinDB, secs)),  // 毎秒現在時刻を進める
+        map(dt => dt.toISOString()),
+        tap(dt => console.log(dt)),
+        map(dt => { return { dt, currentValues: queue[dt] } }),
+      )
+      .subscribe(async ({ dt, currentValues }) => {
+        console.log(currentValues)
+        queue[dt] = undefined;
       })
 
+    // TODO: プリフェッチがうまくいっていない
+    //interval(1000 * 1).subscribe(i => console.log(`[timer] ${i}`));
+    const delaySeconds = 5  // 最初に20秒分取得しているので、初めのプリフェッチを5秒ずらす
+    const prefetchSecondsRange = 10  // 10秒先までを取りに行く
+    interval(1000 * prefetchSecondsRange)
+      .pipe(
+        delay(1000 * delaySeconds),
+        map(i => prefetchSecondsRange * (i + 2)),
+        map(seconds => addSeconds(firstDtinDB, seconds)),
+        tap(dt => console.log(`[prefetch] ${dt.toISOString()}`)),
+        switchMap(async (fromDt) =>
+          await SQLExecuter.recordsWithinSecondsAfter(dbman, stockCode, fromDt, prefetchSecondsRange + 3)),
+        map(result => convertSQLResultToHash(result)),
+      )
+      .subscribe(async (result) => {
+        for(const [key, value] of Object.entries(result)) {
+          queue[key] = value
+        }
+      })
+    // TODO: garbage collection
 
   //const from = '2022-01-01';
   //const to = '2022-01-02';
