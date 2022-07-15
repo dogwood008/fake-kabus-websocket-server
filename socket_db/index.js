@@ -11,13 +11,14 @@ const wss = new WebSocketServer({
 const debug = !!process.env.DEBUG;
 
 class SQLExecuter {
-  // DBで最も最初に存在するDateTime
-  static async firstDtInDB (dbManager, stockCode) {
+  // 指定した日時以降で最も最初に存在するDateTime
+  static async firstDtInDB (dbManager, stockCode, fromDt) {
     const client = await dbManager.client();
     return (await client.query(`
         SELECT datetime from stock_${stockCode}_raw
-          ORDER BY id DESC
-          LIMIT 1;`)).rows[0].datetime;
+          WHERE datetime >= $1
+          ORDER BY id ASC
+          LIMIT 1;`, [fromDt])).rows[0].datetime;
   }
 }
 
@@ -47,7 +48,8 @@ const main = async () => {
   const stockCode = 7974;
 
   try{
-    const firstDtinDB = await SQLExecuter.firstDtInDB(dbman, stockCode);
+    const fromDt = '2022-06-21T09:00:00';
+    const firstDtinDB = await SQLExecuter.firstDtInDB(dbman, stockCode, fromDt);
     console.log(firstDtinDB)
 
   //const from = '2022-01-01';
