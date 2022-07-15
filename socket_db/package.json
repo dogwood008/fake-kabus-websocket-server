@@ -4,6 +4,7 @@
   "description": "Mock the response of kabu STATION PUSH API",
   "main": "index.js",
   "dependencies": {
+    "date-fns": "^2.28.0",
     "express": "^4.17.1",
     "pg": "^8.7.3",
     "rxjs": "^7.5.6",
