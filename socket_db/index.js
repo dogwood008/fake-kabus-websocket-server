@@ -20,9 +20,25 @@ class SQLExecuter {
           ORDER BY id ASC
           LIMIT 1;`, [fromDt])).rows[0].datetime;
   }
+
+  static async recordsWithinOneMinuteAfter (dbManager, stockCode, fromDt) {
+    const client = await dbManager.client();
+    const minutes = 1;
+    const until = addMinutes(new Date(fromDt), minutes);
+    console.log(until)
+    return (await client.query(`
+        SELECT * from stock_${stockCode}_raw
+          WHERE datetime >= $1
+          AND datetime < $2
+          ORDER BY id ASC
+          LIMIT 10000;`, [fromDt, until])).rows;
+  }
 }
 
 import pg from 'pg';
+import { addMinutes } from 'date-fns'
+import { Observable } from 'rxjs';
+
 const { Pool } = pg;
 class DBManager {
   constructor({host, user, password, port, database }) {
@@ -50,7 +66,10 @@ const main = async () => {
   try{
     const fromDt = '2022-06-21T09:00:00';
     const firstDtinDB = await SQLExecuter.firstDtInDB(dbman, stockCode, fromDt);
-    console.log(firstDtinDB)
+    console.log(firstDtinDB);
+    const result = await SQLExecuter.recordsWithinOneMinuteAfter(dbman, stockCode, firstDtinDB);
+    console.log(result)
+
 
   //const from = '2022-01-01';
   //const to = '2022-01-02';
