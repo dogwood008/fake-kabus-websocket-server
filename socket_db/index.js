@@ -81,17 +81,16 @@ const initialFetch = async (dbManager, stockCode, fromDt) => {
 
 // callback({ dt, currentValues })は、そのdt(年月日時分秒をISO8601で)における、
 // currentValue(生データをDBから取り出した値が配列で入っている)を引数にとる
-const loopEachSecondsAndFetch = async (firstDtInDb, queue, callback) => {
+const loopEachSecondsAndFetch = async ({ firstDtInDb, queue, callback, verbose = false }) => {
   interval(A_SECOND_IN_MILLISECONDS * 1)
     .pipe(
       map(secs => addSeconds(firstDtInDb, secs)),  // 毎秒現在時刻を進める
       map(dt => dt.toISOString()),
-      tap(dt => console.log(dt)),
       map(dt => { return { dt, currentValues: queue[dt] || []} }),
+      tap(({ dt, currentValues }) => verbose ? console.log(`[${dt}] currentValues.length: ${currentValues.length}`) : null),
     )
     .subscribe(async ({ dt, currentValues }) => {
       // currentValues には、そのdt(年月日時分秒)における生データをDBから取り出した値が配列で入っている
-      console.log(currentValues.length);
       callback(currentValues);
       queue[dt] = undefined;  // for garbage collection
     })
@@ -136,11 +135,12 @@ const main = async () => {
   try {
     const { firstDtInDb, queue } = await initialFetch(dbManager, stockCode, fromDt);
 
-    loopEachSecondsAndFetch(firstDtInDb, queue, (currentValues) => {
+    loopEachSecondsAndFetch({ firstDtInDb, queue, verbose: true, callback: (currentValues) => {
+      // TODO: ここでWebSocketメッセージを流す
       console.log(currentValues);
-    });
+    } });
 
-    loopPrefetchFromDb({ dbManager, stockCode, queue, firstDtInDb });
+    loopPrefetchFromDb({ dbManager, stockCode, queue, firstDtInDb, verbose: true });
 
   } catch (e) {
     console.error(e);
