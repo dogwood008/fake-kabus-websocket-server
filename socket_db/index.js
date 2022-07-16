@@ -96,7 +96,7 @@ class LoopProcedure {
 
   // callback({ dt, currentValues })は、そのdt(年月日時分秒をISO8601で)における、
   // currentValue(生データをDBから取り出した値が配列で入っている)を引数にとる
-  async loopEachSecondsAndFetch ({ callback, verbose = false }) {
+  async fetchMessagesOnEachSeconds ({ callback, verbose = false }) {
     const verboseFlag = verbose || this.verbose;
     interval(this.A_SECOND_IN_MILLISECONDS * 1)
       .pipe(
@@ -113,7 +113,7 @@ class LoopProcedure {
   }
   
   // DBからプリフェッチする
-  async loopPrefetchFromDb ({
+  async prefetchFromDb ({
       delaySeconds = 5,  // 最初に20秒分取得しているので、初めのプリフェッチを5秒ずらす
       prefetchSecondsRange = 10,  // 10秒毎に取りに行く
       prefetchSecondsWithGraceRange = null, // DBの応答が遅いのを見越して13秒先までを取りに行く
@@ -155,21 +155,19 @@ const main = async () => {
   try {
     const loopProcedure = await LoopProcedure.build({ dbManager, stockCode, fromDt, verbose: true });
 
-    await loopProcedure.loopEachSecondsAndFetch({ callback: (currentValues) => {
+    await loopProcedure.fetchMessagesOnEachSeconds({ callback: (currentValues) => {
       // TODO: ここでWebSocketメッセージを流す
       console.log(currentValues);
     } });
 
-    await loopProcedure.loopPrefetchFromDb({});
+    await loopProcedure.prefetchFromDb({});
 
   } catch (e) {
     console.error(e);
   }
 }
 
-(async () => {
-  await main();
-})()
+await main();
 
 ////////////////////////////////////////////////////////////////////////////////////////
 
