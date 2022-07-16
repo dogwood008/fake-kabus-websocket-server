@@ -2,6 +2,8 @@
 
 // ref: https://shizenkarasuzon.hatenablog.com/entry/2021/04/21/004132
 
+const A_SECOND_IN_MILLISECONDS = 1000;  // ここを300に変更すると、0.3秒に内部時間が1秒進んだ扱いにできる
+
 import { WebSocketServer } from 'ws';
 const wss = new WebSocketServer({
   host: process.env.HOST,
@@ -80,30 +82,29 @@ const main = async () => {
 
     const queue = convertSQLResultToHash(result);
 
-    interval(1000 * 1)
+    interval(A_SECOND_IN_MILLISECONDS * 1)
       .pipe(
         map(secs => addSeconds(firstDtinDB, secs)),  // 毎秒現在時刻を進める
         map(dt => dt.toISOString()),
         tap(dt => console.log(dt)),
-        map(dt => { return { dt, currentValues: queue[dt] } }),
+        map(dt => { return { dt, currentValues: queue[dt] || []} }),
       )
       .subscribe(async ({ dt, currentValues }) => {
-        console.log(currentValues)
-        queue[dt] = undefined;
+        console.log(currentValues.length)
+        queue[dt] = undefined;  // for garbage collection
       })
 
-    // TODO: プリフェッチがうまくいっていない
-    //interval(1000 * 1).subscribe(i => console.log(`[timer] ${i}`));
     const delaySeconds = 5  // 最初に20秒分取得しているので、初めのプリフェッチを5秒ずらす
     const prefetchSecondsRange = 10  // 10秒先までを取りに行く
-    interval(1000 * prefetchSecondsRange)
+    const prefetchSecondsWithGraceRange = prefetchSecondsRange + 3 // 13秒先までを取りに行く
+    interval(A_SECOND_IN_MILLISECONDS * prefetchSecondsRange)
       .pipe(
-        delay(1000 * delaySeconds),
+        delay(A_SECOND_IN_MILLISECONDS * delaySeconds),
         map(i => prefetchSecondsRange * (i + 2)),
         map(seconds => addSeconds(firstDtinDB, seconds)),
-        tap(dt => console.log(`[prefetch] ${dt.toISOString()}`)),
+        tap(dt => console.log(`[prefetch] ${dt.toISOString()} -- ${addSeconds(dt, prefetchSecondsWithGraceRange).toISOString()}`)),
         switchMap(async (fromDt) =>
-          await SQLExecuter.recordsWithinSecondsAfter(dbman, stockCode, fromDt, prefetchSecondsRange + 3)),
+          await SQLExecuter.recordsWithinSecondsAfter(dbman, stockCode, fromDt, prefetchSecondsWithGraceRange)),
         map(result => convertSQLResultToHash(result)),
       )
       .subscribe(async (result) => {
@@ -111,16 +112,6 @@ const main = async () => {
           queue[key] = value
         }
       })
-    // TODO: garbage collection
-
-  //const from = '2022-01-01';
-  //const to = '2022-01-02';
-  //const result = await connect.query(`
-  //  SELECT * from stock_${stockCode}_raw
-  //    WHERE datetime >= $1 AND datetime <= $2
-  //    ORDER BY id DESC;
-  //`, from, to);
-  //console.log(result);
   } catch (e) {
     console.error(e);
   }
