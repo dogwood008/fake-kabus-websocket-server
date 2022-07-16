@@ -36,8 +36,8 @@ class SQLExecuter {
 }
 
 import pg from 'pg';
-import { addMinutes, addSeconds } from 'date-fns'
-import { Observable, from, interval, map, delay, count, tap, switchMap } from 'rxjs';
+import { addSeconds } from 'date-fns'
+import { interval, map, delay, tap, switchMap } from 'rxjs';
 
 const { Pool } = pg;
 class DBManager {
