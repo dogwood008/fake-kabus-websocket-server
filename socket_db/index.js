@@ -14,7 +14,7 @@ const debug = !!process.env.DEBUG;
 
 class SQLExecuter {
   // 指定した日時以降で最も最初に存在するDateTime
-  static async firstDtInDB (dbManager, stockCode, fromDt) {
+  static async firstDtInDb (dbManager, stockCode, fromDt) {
     const client = await dbManager.client();
     return (await client.query(`
         SELECT datetime from stock_${stockCode}_raw
@@ -73,32 +73,41 @@ const convertSQLResultToHash = (result) => {
 // 与えたfromDt以降で見つかる最古のレコードから20秒分取得する
 const initialFetch = async (dbManager, stockCode, fromDt) => {
   const initialFetchSeconds = 20;
-  const firstDtInDb = await SQLExecuter.firstDtInDB(dbManager, stockCode, fromDt);
+  const firstDtInDb = await SQLExecuter.firstDtInDb(dbManager, stockCode, fromDt);
   console.log(firstDtInDb);  // タイムゾーンがZで返るが、システム全域でタイムゾーンの扱いを厳密にする必要が無いので、許容する
   const result = await SQLExecuter.recordsWithinSecondsAfter(dbManager, stockCode, firstDtInDb, 20);
   return { firstDtInDb, queue: convertSQLResultToHash(result) };
 }
 
+// callback({ dt, currentValues })は、そのdt(年月日時分秒をISO8601で)における、
+// currentValue(生データをDBから取り出した値が配列で入っている)を引数にとる
+const loopEachSecondsAndFetch = async (firstDtInDb, queue, callback) => {
+  interval(A_SECOND_IN_MILLISECONDS * 1)
+    .pipe(
+      map(secs => addSeconds(firstDtInDb, secs)),  // 毎秒現在時刻を進める
+      map(dt => dt.toISOString()),
+      tap(dt => console.log(dt)),
+      map(dt => { return { dt, currentValues: queue[dt] || []} }),
+    )
+    .subscribe(async ({ dt, currentValues }) => {
+      // currentValues には、そのdt(年月日時分秒)における生データをDBから取り出した値が配列で入っている
+      console.log(currentValues.length);
+      callback(currentValues);
+      queue[dt] = undefined;  // for garbage collection
+    })
+}
+
 const main = async () => {
   const dbman = new DBManager({});
   const stockCode = 7974;
+  const fromDt = '2022-06-21T09:00:00';
 
   try {
-    const fromDt = '2022-06-21T09:00:00';
     const { firstDtInDb, queue } = await initialFetch(dbman, stockCode, fromDt);
 
-    interval(A_SECOND_IN_MILLISECONDS * 1)
-      .pipe(
-        map(secs => addSeconds(firstDtInDb, secs)),  // 毎秒現在時刻を進める
-        map(dt => dt.toISOString()),
-        tap(dt => console.log(dt)),
-        map(dt => { return { dt, currentValues: queue[dt] || []} }),
-      )
-      .subscribe(async ({ dt, currentValues }) => {
-        // currentValues には、そのdt(年月日時分秒)における生データをDBから取り出した値が配列で入っている
-        console.log(currentValues.length)
-        queue[dt] = undefined;  // for garbage collection
-      })
+    loopEachSecondsAndFetch(firstDtInDb, queue, (currentValues) => {
+      console.log(currentValues);
+    });
 
     const delaySeconds = 5  // 最初に20秒分取得しているので、初めのプリフェッチを5秒ずらす
     const prefetchSecondsRange = 10  // 10秒毎に取りに行く
@@ -107,7 +116,7 @@ const main = async () => {
       .pipe(
         delay(A_SECOND_IN_MILLISECONDS * delaySeconds),
         map(i => prefetchSecondsRange * (i + 2)), // 最初に20秒分取得しているので、プリフェッチを20秒ずらす
-        map(seconds => addSeconds(firstDtinDB, seconds)),
+        map(seconds => addSeconds(firstDtInDb, seconds)),
         tap(dt => console.log(`[prefetch] ${dt.toISOString()} -- ${addSeconds(dt, prefetchSecondsWithGraceRange).toISOString()}`)),
         switchMap(async (fromDt) =>
           await SQLExecuter.recordsWithinSecondsAfter(dbman, stockCode, fromDt, prefetchSecondsWithGraceRange)),
