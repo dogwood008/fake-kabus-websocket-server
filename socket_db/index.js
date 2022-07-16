@@ -57,33 +57,33 @@ class DBManager {
   }
 }
 
-const convertSQLResultToHash = (result) => {
-  const hash = {};
-  result.forEach(row => {
-    const dtStr = row.datetime.toISOString()
-    const val = hash[dtStr] ? hash[dtStr] : [];
-    val.push(row.data);
-    hash[dtStr] = val;
-  });
-  return hash;
-}
-
-// 与えたfromDt以降で見つかる最古のレコードから20秒分取得する
-const initialFetch = async (dbManager, stockCode, fromDt) => {
-  const initialFetchSeconds = 20;
-  const firstDtInDb = await SQLExecuter.firstDtInDb(dbManager, stockCode, fromDt);
-  console.log(firstDtInDb);  // タイムゾーンがZで返るが、システム全域でタイムゾーンの扱いを厳密にする必要が無いので、許容する
-  const result = await SQLExecuter.recordsWithinSecondsAfter(dbManager, stockCode, firstDtInDb, 20);
-  return { firstDtInDb, queue: convertSQLResultToHash(result) };
-}
-
 class LoopProcedure {
-  A_SECOND_IN_MILLISECONDS = 1000;  // ここを300に変更すると、0.3秒に内部時間が1秒進んだ扱いにできる
+  A_SECOND_IN_MILLISECONDS = 1000;  // ここを300に変更すると、0.3秒毎に内部時間が1秒進んだ扱いにできる
 
   // 非同期処理を初期化時に行いたいので、new LoopProcedureではなくLoopProcedure.buildを使うこと
   static async build ({ dbManager, stockCode, fromDt, verbose = false }) {
-    const { firstDtInDb, queue } = await initialFetch(dbManager, stockCode, fromDt);
+    const { firstDtInDb, queue } = await this.initialFetch(dbManager, stockCode, fromDt);
     return new LoopProcedure({ firstDtInDb, queue, dbManager, stockCode, verbose });
+  }
+
+  // 与えたfromDt以降で見つかる最古のレコードから20秒分取得する
+  static async initialFetch (dbManager, stockCode, fromDt) {
+    const initialFetchSeconds = 20;
+    const firstDtInDb = await SQLExecuter.firstDtInDb(dbManager, stockCode, fromDt);
+    console.log(firstDtInDb);  // タイムゾーンがZで返るが、システム全域でタイムゾーンの扱いを厳密にする必要が無いので、許容する
+    const result = await SQLExecuter.recordsWithinSecondsAfter(dbManager, stockCode, firstDtInDb, initialFetchSeconds);
+    return { firstDtInDb, queue: this.convertSQLResultToHash(result) };
+  }
+
+  static convertSQLResultToHash (result) {
+    const hash = {};
+    result.forEach(row => {
+      const dtStr = row.datetime.toISOString()
+      const val = hash[dtStr] ? hash[dtStr] : [];
+      val.push(row.data);
+      hash[dtStr] = val;
+    });
+    return hash;
   }
 
   constructor({ firstDtInDb, queue, dbManager, stockCode, verbose = false }) {
@@ -130,10 +130,10 @@ class LoopProcedure {
         delay(this.A_SECOND_IN_MILLISECONDS * delaySeconds),
         map(i => prefetchSecondsRange * (i + 2)), // 最初に20秒分取得しているので、プリフェッチを20秒ずらす
         map(seconds => addSeconds(this.firstDtInDb, seconds)),
-        tap(dt => verbose ? console.log(`[prefetch] ${dt.toISOString()} -- ${addSeconds(dt, prefetchSecondsWithGraceRange).toISOString()}`) : null),
+        tap(dt => verboseFlag ? console.log(`[prefetch] ${dt.toISOString()} -- ${addSeconds(dt, prefetchSecondsWithGraceRange).toISOString()}`) : null),
         switchMap(async (fromDt) =>
           await SQLExecuter.recordsWithinSecondsAfter(this.dbManager, this.stockCode, fromDt, prefetchSecondsWithGraceRange)),
-        map(result => convertSQLResultToHash(result)),
+        map(result => LoopProcedure.convertSQLResultToHash(result)),
       )
       .subscribe(result => {
         for(const [key, value] of Object.entries(result)) {
