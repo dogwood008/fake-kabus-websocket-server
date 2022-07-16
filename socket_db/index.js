@@ -97,36 +97,51 @@ const loopEachSecondsAndFetch = async (firstDtInDb, queue, callback) => {
     })
 }
 
+// DBからプリフェッチする
+const loopPrefetchFromDb = async ({ dbManager, stockCode, queue, firstDtInDb,
+    delaySeconds = 5,  // 最初に20秒分取得しているので、初めのプリフェッチを5秒ずらす
+    prefetchSecondsRange = 10,  // 10秒毎に取りに行く
+    prefetchSecondsWithGraceRange = null, // DBの応答が遅いのを見越して13秒先までを取りに行く
+    callback = null,  // callback({ dt, currentValues })は、そのdt(年月日時分秒をISO8601で)における、currentValue(生データをDBから取り出した値が配列で入っている)を引数にとる
+    verbose = false,  // verboseモード
+  }) => {
+  if (!prefetchSecondsWithGraceRange) {
+    prefetchSecondsWithGraceRange = prefetchSecondsRange + 3 // DBの応答が遅いのを見越して13秒先までを取りに行く
+  }
+  interval(A_SECOND_IN_MILLISECONDS * prefetchSecondsRange)
+    .pipe(
+      delay(A_SECOND_IN_MILLISECONDS * delaySeconds),
+      map(i => prefetchSecondsRange * (i + 2)), // 最初に20秒分取得しているので、プリフェッチを20秒ずらす
+      map(seconds => addSeconds(firstDtInDb, seconds)),
+      tap(dt => verbose ? console.log(`[prefetch] ${dt.toISOString()} -- ${addSeconds(dt, prefetchSecondsWithGraceRange).toISOString()}`) : null),
+      switchMap(async (fromDt) =>
+        await SQLExecuter.recordsWithinSecondsAfter(dbManager, stockCode, fromDt, prefetchSecondsWithGraceRange)),
+      map(result => convertSQLResultToHash(result)),
+    )
+    .subscribe(result => {
+      for(const [key, value] of Object.entries(result)) {
+        if (callback) {
+          callback({ dt: key, currentValues: value });
+        }
+        queue[key] = value
+      }
+    })
+}
+
 const main = async () => {
-  const dbman = new DBManager({});
+  const dbManager = new DBManager({});
   const stockCode = 7974;
   const fromDt = '2022-06-21T09:00:00';
 
   try {
-    const { firstDtInDb, queue } = await initialFetch(dbman, stockCode, fromDt);
+    const { firstDtInDb, queue } = await initialFetch(dbManager, stockCode, fromDt);
 
     loopEachSecondsAndFetch(firstDtInDb, queue, (currentValues) => {
       console.log(currentValues);
     });
 
-    const delaySeconds = 5  // 最初に20秒分取得しているので、初めのプリフェッチを5秒ずらす
-    const prefetchSecondsRange = 10  // 10秒毎に取りに行く
-    const prefetchSecondsWithGraceRange = prefetchSecondsRange + 3 // DBの応答が遅いのを見越して13秒先までを取りに行く
-    interval(A_SECOND_IN_MILLISECONDS * prefetchSecondsRange)
-      .pipe(
-        delay(A_SECOND_IN_MILLISECONDS * delaySeconds),
-        map(i => prefetchSecondsRange * (i + 2)), // 最初に20秒分取得しているので、プリフェッチを20秒ずらす
-        map(seconds => addSeconds(firstDtInDb, seconds)),
-        tap(dt => console.log(`[prefetch] ${dt.toISOString()} -- ${addSeconds(dt, prefetchSecondsWithGraceRange).toISOString()}`)),
-        switchMap(async (fromDt) =>
-          await SQLExecuter.recordsWithinSecondsAfter(dbman, stockCode, fromDt, prefetchSecondsWithGraceRange)),
-        map(result => convertSQLResultToHash(result)),
-      )
-      .subscribe(result => {
-        for(const [key, value] of Object.entries(result)) {
-          queue[key] = value
-        }
-      })
+    loopPrefetchFromDb({ dbManager, stockCode, queue, firstDtInDb });
+
   } catch (e) {
     console.error(e);
   }
