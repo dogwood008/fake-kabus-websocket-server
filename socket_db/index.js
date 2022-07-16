@@ -2,8 +2,6 @@
 
 // ref: https://shizenkarasuzon.hatenablog.com/entry/2021/04/21/004132
 
-const A_SECOND_IN_MILLISECONDS = 1000;  // ここを300に変更すると、0.3秒に内部時間が1秒進んだ扱いにできる
-
 import { WebSocketServer } from 'ws';
 const wss = new WebSocketServer({
   host: process.env.HOST,
@@ -79,53 +77,75 @@ const initialFetch = async (dbManager, stockCode, fromDt) => {
   return { firstDtInDb, queue: convertSQLResultToHash(result) };
 }
 
-// callback({ dt, currentValues })は、そのdt(年月日時分秒をISO8601で)における、
-// currentValue(生データをDBから取り出した値が配列で入っている)を引数にとる
-const loopEachSecondsAndFetch = async ({ firstDtInDb, queue, callback, verbose = false }) => {
-  interval(A_SECOND_IN_MILLISECONDS * 1)
-    .pipe(
-      map(secs => addSeconds(firstDtInDb, secs)),  // 毎秒現在時刻を進める
-      map(dt => dt.toISOString()),
-      map(dt => { return { dt, currentValues: queue[dt] || []} }),
-      tap(({ dt, currentValues }) => verbose ? console.log(`[${dt}] currentValues.length: ${currentValues.length}`) : null),
-    )
-    .subscribe(async ({ dt, currentValues }) => {
-      // currentValues には、そのdt(年月日時分秒)における生データをDBから取り出した値が配列で入っている
-      callback(currentValues);
-      queue[dt] = undefined;  // for garbage collection
-    })
+class LoopProcedure {
+  A_SECOND_IN_MILLISECONDS = 1000;  // ここを300に変更すると、0.3秒に内部時間が1秒進んだ扱いにできる
+
+  // 非同期処理を初期化時に行いたいので、new LoopProcedureではなくLoopProcedure.buildを使うこと
+  static async build ({ dbManager, stockCode, fromDt, verbose = false }) {
+    const { firstDtInDb, queue } = await initialFetch(dbManager, stockCode, fromDt);
+    return new LoopProcedure({ firstDtInDb, queue, dbManager, stockCode, verbose });
+  }
+
+  constructor({ firstDtInDb, queue, dbManager, stockCode, verbose = false }) {
+    this.firstDtInDb = firstDtInDb;
+    this.queue = queue;
+    this.dbManager = dbManager;
+    this.stockCode = stockCode;
+    this.verbose = verbose;
+  }
+
+  // callback({ dt, currentValues })は、そのdt(年月日時分秒をISO8601で)における、
+  // currentValue(生データをDBから取り出した値が配列で入っている)を引数にとる
+  async loopEachSecondsAndFetch ({ callback, verbose = false }) {
+    const verboseFlag = verbose || this.verbose;
+    interval(this.A_SECOND_IN_MILLISECONDS * 1)
+      .pipe(
+        map(secs => addSeconds(this.firstDtInDb, secs)),  // 毎秒現在時刻を進める
+        map(dt => dt.toISOString()),
+        map(dt => { return { dt, currentValues: this.queue[dt] || []} }),
+        tap(({ dt, currentValues }) => verboseFlag ? console.log(`[${dt}] currentValues.length: ${currentValues.length}`) : null),
+      )
+      .subscribe(async ({ dt, currentValues }) => {
+        // currentValues には、そのdt(年月日時分秒)における生データをDBから取り出した値が配列で入っている
+        callback(currentValues);
+        this.queue[dt] = undefined;  // for garbage collection
+      })
+  }
+  
+  // DBからプリフェッチする
+  async loopPrefetchFromDb ({
+      delaySeconds = 5,  // 最初に20秒分取得しているので、初めのプリフェッチを5秒ずらす
+      prefetchSecondsRange = 10,  // 10秒毎に取りに行く
+      prefetchSecondsWithGraceRange = null, // DBの応答が遅いのを見越して13秒先までを取りに行く
+      callback = null,  // callback({ dt, currentValues })は、そのdt(年月日時分秒をISO8601で)における、currentValue(生データをDBから取り出した値が配列で入っている)を引数にとる
+      verbose = false,  // verboseモード
+    }) {
+    if (!prefetchSecondsWithGraceRange) {
+      prefetchSecondsWithGraceRange = prefetchSecondsRange + 3 // DBの応答が遅いのを見越して13秒先までを取りに行く
+    }
+    const verboseFlag = verbose || this.verbose;
+
+    interval(this.A_SECOND_IN_MILLISECONDS * prefetchSecondsRange)
+      .pipe(
+        delay(this.A_SECOND_IN_MILLISECONDS * delaySeconds),
+        map(i => prefetchSecondsRange * (i + 2)), // 最初に20秒分取得しているので、プリフェッチを20秒ずらす
+        map(seconds => addSeconds(this.firstDtInDb, seconds)),
+        tap(dt => verbose ? console.log(`[prefetch] ${dt.toISOString()} -- ${addSeconds(dt, prefetchSecondsWithGraceRange).toISOString()}`) : null),
+        switchMap(async (fromDt) =>
+          await SQLExecuter.recordsWithinSecondsAfter(this.dbManager, this.stockCode, fromDt, prefetchSecondsWithGraceRange)),
+        map(result => convertSQLResultToHash(result)),
+      )
+      .subscribe(result => {
+        for(const [key, value] of Object.entries(result)) {
+          if (callback) {
+            callback({ dt: key, currentValues: value });
+          }
+          this.queue[key] = value
+        }
+      })
+  }
 }
 
-// DBからプリフェッチする
-const loopPrefetchFromDb = async ({ dbManager, stockCode, queue, firstDtInDb,
-    delaySeconds = 5,  // 最初に20秒分取得しているので、初めのプリフェッチを5秒ずらす
-    prefetchSecondsRange = 10,  // 10秒毎に取りに行く
-    prefetchSecondsWithGraceRange = null, // DBの応答が遅いのを見越して13秒先までを取りに行く
-    callback = null,  // callback({ dt, currentValues })は、そのdt(年月日時分秒をISO8601で)における、currentValue(生データをDBから取り出した値が配列で入っている)を引数にとる
-    verbose = false,  // verboseモード
-  }) => {
-  if (!prefetchSecondsWithGraceRange) {
-    prefetchSecondsWithGraceRange = prefetchSecondsRange + 3 // DBの応答が遅いのを見越して13秒先までを取りに行く
-  }
-  interval(A_SECOND_IN_MILLISECONDS * prefetchSecondsRange)
-    .pipe(
-      delay(A_SECOND_IN_MILLISECONDS * delaySeconds),
-      map(i => prefetchSecondsRange * (i + 2)), // 最初に20秒分取得しているので、プリフェッチを20秒ずらす
-      map(seconds => addSeconds(firstDtInDb, seconds)),
-      tap(dt => verbose ? console.log(`[prefetch] ${dt.toISOString()} -- ${addSeconds(dt, prefetchSecondsWithGraceRange).toISOString()}`) : null),
-      switchMap(async (fromDt) =>
-        await SQLExecuter.recordsWithinSecondsAfter(dbManager, stockCode, fromDt, prefetchSecondsWithGraceRange)),
-      map(result => convertSQLResultToHash(result)),
-    )
-    .subscribe(result => {
-      for(const [key, value] of Object.entries(result)) {
-        if (callback) {
-          callback({ dt: key, currentValues: value });
-        }
-        queue[key] = value
-      }
-    })
-}
 
 const main = async () => {
   const dbManager = new DBManager({});
@@ -133,14 +153,14 @@ const main = async () => {
   const fromDt = '2022-06-21T09:00:00';
 
   try {
-    const { firstDtInDb, queue } = await initialFetch(dbManager, stockCode, fromDt);
+    const loopProcedure = await LoopProcedure.build({ dbManager, stockCode, fromDt, verbose: true });
 
-    loopEachSecondsAndFetch({ firstDtInDb, queue, verbose: true, callback: (currentValues) => {
+    await loopProcedure.loopEachSecondsAndFetch({ callback: (currentValues) => {
       // TODO: ここでWebSocketメッセージを流す
       console.log(currentValues);
     } });
 
-    loopPrefetchFromDb({ dbManager, stockCode, queue, firstDtInDb, verbose: true });
+    await loopProcedure.loopPrefetchFromDb({});
 
   } catch (e) {
     console.error(e);
