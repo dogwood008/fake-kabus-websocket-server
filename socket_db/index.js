@@ -70,21 +70,26 @@ const convertSQLResultToHash = (result) => {
   return hash;
 }
 
+// 与えたfromDt以降で見つかる最古のレコードから20秒分取得する
+const initialFetch = async (dbManager, stockCode, fromDt) => {
+  const initialFetchSeconds = 20;
+  const firstDtInDb = await SQLExecuter.firstDtInDB(dbManager, stockCode, fromDt);
+  console.log(firstDtInDb);  // タイムゾーンがZで返るが、システム全域でタイムゾーンの扱いを厳密にする必要が無いので、許容する
+  const result = await SQLExecuter.recordsWithinSecondsAfter(dbManager, stockCode, firstDtInDb, 20);
+  return { firstDtInDb, queue: convertSQLResultToHash(result) };
+}
+
 const main = async () => {
   const dbman = new DBManager({});
   const stockCode = 7974;
 
   try {
     const fromDt = '2022-06-21T09:00:00';
-    const firstDtinDB = await SQLExecuter.firstDtInDB(dbman, stockCode, fromDt);
-    console.log(firstDtinDB);  // タイムゾーンがZで返るが、システム全域でタイムゾーンの扱いを厳密にする必要が無いので、許容する
-    const result = await SQLExecuter.recordsWithinSecondsAfter(dbman, stockCode, firstDtinDB, 10);
-
-    const queue = convertSQLResultToHash(result);
+    const { firstDtInDb, queue } = await initialFetch(dbman, stockCode, fromDt);
 
     interval(A_SECOND_IN_MILLISECONDS * 1)
       .pipe(
-        map(secs => addSeconds(firstDtinDB, secs)),  // 毎秒現在時刻を進める
+        map(secs => addSeconds(firstDtInDb, secs)),  // 毎秒現在時刻を進める
         map(dt => dt.toISOString()),
         tap(dt => console.log(dt)),
         map(dt => { return { dt, currentValues: queue[dt] || []} }),
