@@ -74,10 +74,10 @@ const main = async () => {
   const dbman = new DBManager({});
   const stockCode = 7974;
 
-  try{
+  try {
     const fromDt = '2022-06-21T09:00:00';
     const firstDtinDB = await SQLExecuter.firstDtInDB(dbman, stockCode, fromDt);
-    console.log(firstDtinDB);
+    console.log(firstDtinDB);  // タイムゾーンがZで返るが、システム全域でタイムゾーンの扱いを厳密にする必要が無いので、許容する
     const result = await SQLExecuter.recordsWithinSecondsAfter(dbman, stockCode, firstDtinDB, 10);
 
     const queue = convertSQLResultToHash(result);
@@ -90,24 +90,25 @@ const main = async () => {
         map(dt => { return { dt, currentValues: queue[dt] || []} }),
       )
       .subscribe(async ({ dt, currentValues }) => {
+        // currentValues には、そのdt(年月日時分秒)における生データをDBから取り出した値が配列で入っている
         console.log(currentValues.length)
         queue[dt] = undefined;  // for garbage collection
       })
 
     const delaySeconds = 5  // 最初に20秒分取得しているので、初めのプリフェッチを5秒ずらす
-    const prefetchSecondsRange = 10  // 10秒先までを取りに行く
-    const prefetchSecondsWithGraceRange = prefetchSecondsRange + 3 // 13秒先までを取りに行く
+    const prefetchSecondsRange = 10  // 10秒毎に取りに行く
+    const prefetchSecondsWithGraceRange = prefetchSecondsRange + 3 // DBの応答が遅いのを見越して13秒先までを取りに行く
     interval(A_SECOND_IN_MILLISECONDS * prefetchSecondsRange)
       .pipe(
         delay(A_SECOND_IN_MILLISECONDS * delaySeconds),
-        map(i => prefetchSecondsRange * (i + 2)),
+        map(i => prefetchSecondsRange * (i + 2)), // 最初に20秒分取得しているので、プリフェッチを20秒ずらす
         map(seconds => addSeconds(firstDtinDB, seconds)),
         tap(dt => console.log(`[prefetch] ${dt.toISOString()} -- ${addSeconds(dt, prefetchSecondsWithGraceRange).toISOString()}`)),
         switchMap(async (fromDt) =>
           await SQLExecuter.recordsWithinSecondsAfter(dbman, stockCode, fromDt, prefetchSecondsWithGraceRange)),
         map(result => convertSQLResultToHash(result)),
       )
-      .subscribe(async (result) => {
+      .subscribe(result => {
         for(const [key, value] of Object.entries(result)) {
           queue[key] = value
         }
