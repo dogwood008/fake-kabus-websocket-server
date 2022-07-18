@@ -176,10 +176,9 @@ class WebSocketManager {
   }
 }
 
-const main = async () => {
+const main = async (fromDt) => {
   try {
     const stockCode = 7974;
-    const fromDt = '2022-06-21T09:00:00';
     const dbManager = new DBManager({});
     const loopProcedure = await LoopProcedure.build({ dbManager, stockCode, fromDt, verbose: true });
     let fetchMessagesSub, prefetchDbSub;
@@ -214,4 +213,6 @@ const main = async () => {
 }
 
 console.log('socket_db started.')
-await main();
+const args = process.argv.slice(2, process.argv.length)
+const fromDt = args[0] // '2022-06-21T09:00:00';
+await main(fromDt);

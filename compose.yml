@@ -80,6 +80,7 @@ services:
     command:
       - node
       - index.js
+      - '2022-06-21T09:00:00'
 
   token:
     build:
