@@ -93,7 +93,7 @@ class LoopProcedure {
   // currentValue(生データをDBから取り出した値が配列で入っている)を引数にとる
   async fetchMessagesOnEachSeconds ({ callback, verbose = false }) {
     const verboseFlag = verbose || this.verbose;
-    interval(this.A_SECOND_IN_MILLISECONDS * 1)
+    return interval(this.A_SECOND_IN_MILLISECONDS * 1)
       .pipe(
         map(secs => addSeconds(this.firstDtInDb, secs)),  // 毎秒現在時刻を進める
         map(dt => dt.toISOString()),
@@ -112,7 +112,6 @@ class LoopProcedure {
       delaySeconds = 5,  // 最初に20秒分取得しているので、初めのプリフェッチを5秒ずらす
       prefetchSecondsRange = 10,  // 10秒毎に取りに行く
       prefetchSecondsWithGraceRange = null, // DBの応答が遅いのを見越して13秒先までを取りに行く
-      callback = null,  // callback({ dt, currentValues })は、そのdt(年月日時分秒をISO8601で)における、currentValue(生データをDBから取り出した値が配列で入っている)を引数にとる
       verbose = false,  // verboseモード
     }) {
     if (!prefetchSecondsWithGraceRange) {
@@ -120,7 +119,7 @@ class LoopProcedure {
     }
     const verboseFlag = verbose || this.verbose;
 
-    interval(this.A_SECOND_IN_MILLISECONDS * prefetchSecondsRange)
+    return interval(this.A_SECOND_IN_MILLISECONDS * prefetchSecondsRange)
       .pipe(
         delay(this.A_SECOND_IN_MILLISECONDS * delaySeconds),
         map(i => prefetchSecondsRange * (i + 2)), // 最初に20秒分取得しているので、プリフェッチを20秒ずらす
@@ -130,7 +129,7 @@ class LoopProcedure {
           await SQLExecuter.recordsWithinSecondsAfter(this.dbManager, this.stockCode, fromDt, prefetchSecondsWithGraceRange)),
         map(result => LoopProcedure.convertSQLResultToHash(result)),
       )
-      .subscribe(result => {
+      .subscribe(async result => {
         for(const [key, value] of Object.entries(result)) {
           if (callback) {
             callback({ dt: key, currentValues: value });
@@ -138,6 +137,18 @@ class LoopProcedure {
           this.queue[key] = value
         }
       })
+  }
+
+  // callback({ dt, currentValues })は、そのdt(年月日時分秒をISO8601で)における、currentValue(生データをDBから取り出した値が配列で入っている)を引数にとる
+  async subscribePrefetchFromDb (observable, callback = null) {
+    observable.subscribe(async result => {
+      for(const [key, value] of Object.entries(result)) {
+        if (callback) {
+          callback({ dt: key, currentValues: value });
+        }
+        this.queue[key] = value
+      }
+    })
   }
 }
 
@@ -149,39 +160,46 @@ class WebSocketManager {
 
   async setup (startCallback, stopCallback=null) {
     const that = this;
-    this.wss.on('close', function incoming(event) {
-      console.log(event);
-      console.log('close');
-      if (stopCallback) {
-        stopCallback();
-      }
-    })
-
     // 接続開始
     this.wss.on('connection', async function connection(ws) {
+      console.log('WebSocket connected.')
       await startCallback(ws);  // コネクションを確立させてから送り始める
+
+      ws.on('close', function close() {
+        console.log('close');
+        if (stopCallback) {
+          console.log('stopCallback');
+          stopCallback();
+        }
+      })
     });
   }
 }
 
 const main = async () => {
   try {
-    const callback = async (websocket) => {
-      const dbManager = new DBManager({});
-      const stockCode = 7974;
-      const fromDt = '2022-06-21T09:00:00';
-      const loopProcedure = await LoopProcedure.build({ dbManager, stockCode, fromDt, verbose: true });
-      await loopProcedure.fetchMessagesOnEachSeconds({ callback: (currentValues) => {
-        console.log(currentValues);
-        if (!currentValues.length) { return; }
-        const msg = JSON.stringify(currentValues);
-        websocket.send(msg);
-      } });
+    const stockCode = 7974;
+    const fromDt = '2022-06-21T09:00:00';
+    const dbManager = new DBManager({});
+    const loopProcedure = await LoopProcedure.build({ dbManager, stockCode, fromDt, verbose: true });
 
-      await loopProcedure.prefetchFromDb({});
+    let fetchMessagesSub, prefetchDbSub;
+    const startCallback = async (websocket) => {
+      fetchMessagesSub = await loopProcedure.fetchMessagesOnEachSeconds({ callback: currentValues => {
+          console.log(currentValues);
+          if (!currentValues.length) { return; }
+          //websocket.send(currentValues);
+          const msg = JSON.stringify(currentValues);
+          websocket.send(msg);
+        }
+      });
+      prefetchDbSub = await loopProcedure.prefetchFromDb({});
     }
     const websocketManager = new WebSocketManager({});
-    await websocketManager.setup(callback)
+    await websocketManager.setup(startCallback, function() {
+      fetchMessagesSub.unsubscribe();
+      prefetchDbSub.unsubscribe();
+    })
 
   } catch (e) {
     console.error(e);
