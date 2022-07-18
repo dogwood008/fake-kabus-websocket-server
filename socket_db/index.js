@@ -182,9 +182,15 @@ const main = async () => {
     const fromDt = '2022-06-21T09:00:00';
     const dbManager = new DBManager({});
     const loopProcedure = await LoopProcedure.build({ dbManager, stockCode, fromDt, verbose: true });
-
     let fetchMessagesSub, prefetchDbSub;
+    let isStarted = false;
+
     const startCallback = async (websocket) => {
+      if (isStarted) {
+        console.warn('[WARN] already started.');
+        return;
+      }
+      isStarted = true
       fetchMessagesSub = await loopProcedure.fetchMessagesOnEachSeconds({ callback: currentValues => {
           console.log(currentValues);
           if (!currentValues.length) { return; }
@@ -199,6 +205,7 @@ const main = async () => {
     await websocketManager.setup(startCallback, function() {
       fetchMessagesSub.unsubscribe();
       prefetchDbSub.unsubscribe();
+      isStarted = false;
     })
 
   } catch (e) {
