@@ -5,6 +5,7 @@ x-db-settings: &DB_SETTINGS
   POSTGRES_PASSWORD: postgres
   POSTGRES_PORT: '5432'
   POSTGRES_HOST: db
+  POSTGRES_DB_NAME: websocket_messages
 services:
   nginx:
     image: nginx:latest
@@ -15,8 +16,10 @@ services:
       - ./nginx:/etc/nginx/conf.d:ro
     restart: always
     depends_on: 
-      - socket
+      # - socket_dummy
+      - socket_db
       - token
+      - db
 
   db:
     image: 'postgres:14.3'
@@ -40,6 +43,7 @@ services:
       WEBSOCKET_PATH: $WEBSOCKET_PATH
       << : *DB_SETTINGS
     volumes:
+      - /app/node_modules
       - ./recorder:/app:cached
     command:
       - node
@@ -47,27 +51,49 @@ services:
     depends_on: 
       - db
 
-  socket:
+  # ダミーの値を流し続けるWebSocketサーバ
+  # socket_dummy:
+  #   build:
+  #     context: ./socket_dummy
+  #   init: true
+  #   ports:
+  #    - '5002:5002'
+  #   environment:
+  #     - PORT=5002
+  #   command:
+  #     - node
+  #     - index.js
+
+  # DBから取り出した値を流し続けるWebSocketサーバ
+  socket_db:
     build:
-      context: ./app
+      context: ./socket_db
     init: true
     ports:
      - '5002:5002'
     environment:
-      - PORT=5002
+      << : *DB_SETTINGS
+      PORT: 5002
+    volumes:
+      - /app/node_modules
+      - ./socket_db:/app:cached
     command:
       - node
       - index.js
+      - '2022-06-21T09:00:00'
 
   token:
     build:
-      context: ./app
+      context: ./token
     init: true
     ports:
      - '5001:5001'
     environment:
       - PORT=5001
       - HOST=lvh.me
+    volumes:
+      - /app/node_modules
+      - ./token:/app:cached
     command:
       - node
-      - token.js
+      - index.js

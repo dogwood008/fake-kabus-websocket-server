@@ -22,39 +22,24 @@ function initWebSocket () {
 
 function createDbSql(dbName) {
   return `SELECT 'CREATE DATABASE ${dbName}'
-    WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = '${dbName}'); `
-    + `SELECT 'CREATE DATABASE ${dbName}_raw'
-    WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = '${dbName}_raw');`
+    WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = '${dbName}');`
 }
 
 function createTableSql(stockCode) {
-  return `CREATE TABLE IF NOT EXISTS stock_${stockCode} (
-    datetime timestamp NOT NULL,
-    volume int NOT NULL,
-    price float NOT NULL
-    ); `
-    + `CREATE TABLE IF NOT EXISTS stock_${stockCode}_raw (
-      datetime timestamp NOT NULL,
-      data text NOT NULL
+  return `CREATE TABLE IF NOT EXISTS stock_${stockCode}_raw (
+      id SERIAL NOT NULL UNIQUE PRIMARY KEY,
+      datetime TIMESTAMP NOT NULL,
+      data TEXT NOT NULL
     );`
+    + ` CREATE INDEX IF NOT EXISTS stock_${stockCode}_raw_id_index`
+    + ` ON stock_${stockCode}_raw (id);`
+    + ` CREATE INDEX IF NOT EXISTS stock_${stockCode}_raw_datetime_index`
+    + ` ON stock_${stockCode}_raw (datetime);`;
 }
 
-function valuesFromJson(json) {
-  const stock_code = '7974';
-  const dateTime = json.TradingVolumeTime;
-  const volume = json.TradingVolume;
-  const price = json.CalcPrice;
-  return { stock_code, dateTime, volume, price };
-}
-
-function insertSql(message) {
-  const { stock_code, dateTime, volume, price } = valuesFromJson(message);
-  return `INSERT INTO stock_${stock_code} VALUES(
-    '${dateTime}',
-    ${volume},
-    ${price}
-  );`
-  + `INSERT INTO stock_${stock_code}_raw VALUES(
+function insertSql({ message, stockCode }) {
+  const dateTime = message.TradingVolumeTime;
+  return `INSERT INTO stock_${stockCode}_raw (datetime, data) VALUES (
     '${dateTime}',
     '${JSON.stringify(message)}'
   );`
@@ -66,15 +51,16 @@ async function initPg() {
     user: process.env.POSTGRES_USER,
     password: process.env.POSTGRES_PASSWORD,
     port: process.env.POSTGRES_PORT,
+    database: process.env.POSTGRES_DB_NAME,
   });
   const connect = await pool.connect();
-  const createDbSqlStatement = createDbSql('websocket_messages');
+  const createDbSqlStatement = createDbSql(process.env.POSTGRES_DB_NAME);
   console.log(createDbSqlStatement)
   await connect.query(createDbSqlStatement);
-  for(const stockCode of ['7974']) {
+  for(const stockCode of ['9468']) {
     const sql = createTableSql(stockCode);
     console.log({sql})
-    await connect.query(sql);
+    console.log(await connect.query(sql));
   }
 
   return { pool, connect };
@@ -88,6 +74,8 @@ async function exit(connect, pool) {
 async function main({ pool, connect }) {
   let currentTradingVolumeTime = null;
   let currentTradingVolume = 0;
+  const stockCode = 7974;
+
   ws.on('open', function open() {
     console.log('open');
   });
@@ -109,11 +97,11 @@ async function main({ pool, connect }) {
       return;
     }
     const tradingVolume = json.TradingVolume - currentTradingVolume;
-    const sql = insertSql(json);
+    const sql = insertSql({ json, stockCode });
     currentTradingVolume, currentTradingVolumeTime = [tradingVolume, tradingVolumeTime];
     connect.query(sql).then(() => {
-      const { stock_code, dateTime, volume, price } = valuesFromJson(json);
-      console.log(`[${stock_code}] ${dateTime} ${price} ${volume}` );
+      const { dateTime, volume, price } = valuesFromJson(json, stockCode);
+      console.log(`[${stockCode}] ${dateTime} ${price} ${volume}` );
     }, (err) => { console.error(err); });
   });
 }
