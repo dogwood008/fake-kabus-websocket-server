@@ -19,12 +19,14 @@ class SQLExecuter {
   static async recordsWithinSecondsAfter (dbManager, stockCode, fromDt, seconds) {
     const client = await dbManager.client();
     const until = addSeconds(new Date(fromDt), seconds);
-    return (await client.query(`
+    const sql = `
         SELECT * from stock_${stockCode}_raw
           WHERE datetime >= $1
           AND datetime < $2
           ORDER BY id ASC
-          LIMIT 10000;`, [fromDt, until])).rows;
+          LIMIT 10000;`
+    console.log(sql, [fromDt, until]);
+    return (await client.query(sql, [fromDt, until])).rows;
   }
 }
 
@@ -113,6 +115,8 @@ class LoopProcedure {
       prefetchSecondsRange = 10,  // 10秒毎に取りに行く
       prefetchSecondsWithGraceRange = null, // DBの応答が遅いのを見越して13秒先までを取りに行く
       verbose = false,  // verboseモード
+      callback = null,  // callback({ dt, currentValues })は、そのdt(年月日時分秒をISO8601で)における、
+                        // currentValue(生データをDBから取り出した値が配列で入っている)を引数にとる
     }) {
     if (!prefetchSecondsWithGraceRange) {
       prefetchSecondsWithGraceRange = prefetchSecondsRange + 3 // DBの応答が遅いのを見越して13秒先までを取りに行く
@@ -150,6 +154,14 @@ class LoopProcedure {
       }
     })
   }
+
+  setQueue(queue) {
+    this.queue = queue;
+  }
+
+  getFirstDateTimeInDb() {
+    return this.firstDtInDb;
+  }
 }
 
 
@@ -182,12 +194,19 @@ const main = async (fromDt) => {
     const dbManager = new DBManager({});
     const loopProcedure = await LoopProcedure.build({ dbManager, stockCode, fromDt, verbose: true });
     let fetchMessagesSub, prefetchDbSub;
-    let isStarted = false;
+    let [isStarted, reStart] = [false, false];
 
     const startCallback = async (websocket) => {
       if (isStarted) {
         console.warn('[WARN] already started.');
         return;
+      }
+      if (reStart) {
+        console.log('restart');
+        const initialResult = await SQLExecuter.recordsWithinSecondsAfter(dbManager, stockCode, loopProcedure.getFirstDateTimeInDb(), 20)
+        console.log(initialResult)
+        loopProcedure.setQueue(
+          LoopProcedure.convertSQLResultToHash(initialResult))
       }
       isStarted = true
       fetchMessagesSub = await loopProcedure.fetchMessagesOnEachSeconds({ callback: currentValues => {
@@ -205,6 +224,7 @@ const main = async (fromDt) => {
       fetchMessagesSub.unsubscribe();
       prefetchDbSub.unsubscribe();
       isStarted = false;
+      reStart = true;
     })
 
   } catch (e) {
