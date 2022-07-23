@@ -2,36 +2,12 @@
 
 // ref: https://shizenkarasuzon.hatenablog.com/entry/2021/04/21/004132
 
-import { WebSocketServer } from 'ws';
+import { WebSocketManager } from './web_socket_manager.js'
+import { SQLExecuter } from './sql_executer.js'
+
 const debug = !!process.env.DEBUG;
 
-class SQLExecuter {
-  // 指定した日時以降で最も最初に存在するDateTime
-  static async firstDtInDb (dbManager, stockCode, fromDt) {
-    const client = await dbManager.client();
-    return (await client.query(`
-        SELECT datetime from stock_${stockCode}_raw
-          WHERE datetime >= $1
-          ORDER BY id ASC
-          LIMIT 1;`, [fromDt])).rows[0].datetime;
-  }
-
-  static async recordsWithinSecondsAfter (dbManager, stockCode, fromDt, seconds) {
-    const client = await dbManager.client();
-    const until = addSeconds(new Date(fromDt), seconds);
-    const sql = `
-        SELECT * from stock_${stockCode}_raw
-          WHERE datetime >= $1
-          AND datetime < $2
-          ORDER BY id ASC
-          LIMIT 10000;`
-    console.log(sql, [fromDt, until]);
-    return (await client.query(sql, [fromDt, until])).rows;
-  }
-}
-
 import pg from 'pg';
-import { addSeconds } from 'date-fns'
 import { interval, map, delay, tap, switchMap } from 'rxjs';
 
 const { Pool } = pg;
@@ -165,28 +141,6 @@ class LoopProcedure {
 }
 
 
-class WebSocketManager {
-  constructor ({ host = process.env.HOST, port = process.env.PORT }){
-    this.wss = new WebSocketServer({ host, port });
-  }
-
-  async setup (startCallback, stopCallback=null) {
-    const that = this;
-    // 接続開始
-    this.wss.on('connection', async function connection(ws) {
-      console.log('WebSocket connected.')
-      await startCallback(ws);  // コネクションを確立させてから送り始める
-
-      ws.on('close', function close() {
-        console.log('close');
-        if (stopCallback) {
-          console.log('stopCallback');
-          stopCallback();
-        }
-      })
-    });
-  }
-}
 
 const main = async (fromDt) => {
   try {
