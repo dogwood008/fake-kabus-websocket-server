@@ -4,31 +4,14 @@
 
 import { WebSocketManager } from './web_socket_manager.js'
 import { SQLExecuter } from './sql_executer.js'
+import { DBManager } from './db_manager.js'
 
 const debug = !!process.env.DEBUG;
 
-import pg from 'pg';
+
 import { interval, map, delay, tap, switchMap } from 'rxjs';
 
-const { Pool } = pg;
-class DBManager {
-  constructor({host, user, password, port, database }) {
-    host = host || process.env.POSTGRES_HOST
-    user = user || process.env.POSTGRES_USER
-    password = password || process.env.POSTGRES_PASSWORD
-    port = port || process.env.POSTGRES_PORT
-    database = database || process.env.POSTGRES_DB_NAME
 
-    this.pool = new Pool({ host, user, password, port, database });
-    this.connect = null;
-  }
-  async client() {
-    if (!this.connect) {
-      this.connect = await this.pool.connect();
-    }
-    return this.connect;
-  }
-}
 
 class LoopProcedure {
   A_SECOND_IN_MILLISECONDS = 1000;  // ここを300に変更すると、0.3秒毎に内部時間が1秒進んだ扱いにできる
