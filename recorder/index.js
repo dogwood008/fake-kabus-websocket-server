@@ -51,7 +51,7 @@ async function initPg() {
     user: process.env.POSTGRES_USER,
     password: process.env.POSTGRES_PASSWORD,
     port: process.env.POSTGRES_PORT,
-    database: process.env.POSTGRES_DB_NAME,
+    //database: process.env.POSTGRES_DB_NAME,
   });
   const connect = await pool.connect();
   const createDbSqlStatement = createDbSql(process.env.POSTGRES_DB_NAME);
