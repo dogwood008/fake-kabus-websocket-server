@@ -38,6 +38,7 @@ function createTableSql(stockCode) {
 }
 
 function insertSql({ message, stockCode }) {
+  if (typeof message === 'undefined') { return }
   const dateTime = message.TradingVolumeTime;
   return `INSERT INTO stock_${stockCode}_raw (datetime, data) VALUES (
     '${dateTime}',
@@ -57,7 +58,7 @@ async function initPg() {
   const createDbSqlStatement = createDbSql(process.env.POSTGRES_DB_NAME);
   console.log(createDbSqlStatement)
   await connect.query(createDbSqlStatement);
-  for(const stockCode of ['9468']) {
+  for(const stockCode of [9468, 7974, 4751]) {
     const sql = createTableSql(stockCode);
     console.log({sql})
     console.log(await connect.query(sql));
@@ -66,15 +67,25 @@ async function initPg() {
   return { pool, connect };
 }
 
+function valuesFromJson(json) {
+  const dateTime = json.TradingVolumeTime;
+  const volume = json.TradingVolume;
+  const price = json.CalcPrice;
+  return { dateTime, volume, price };
+}
+
 async function exit(connect, pool) {
   await connect.release();
   await pool.end();
 }
 
+function stockCodeFromMessage(message) {
+  return message.Symbol
+}
+
 async function main({ pool, connect }) {
   let currentTradingVolumeTime = null;
   let currentTradingVolume = 0;
-  const stockCode = 7974;
 
   ws.on('open', function open() {
     console.log('open');
@@ -97,7 +108,8 @@ async function main({ pool, connect }) {
       return;
     }
     const tradingVolume = json.TradingVolume - currentTradingVolume;
-    const sql = insertSql({ json, stockCode });
+    const stockCode = stockCodeFromMessage(json)
+    const sql = insertSql({ message: json, stockCode });
     currentTradingVolume, currentTradingVolumeTime = [tradingVolume, tradingVolumeTime];
     connect.query(sql).then(() => {
       const { dateTime, volume, price } = valuesFromJson(json, stockCode);
