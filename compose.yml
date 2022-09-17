@@ -8,6 +8,7 @@ x-db-settings: &DB_SETTINGS
   POSTGRES_PORT: '5432'
   POSTGRES_HOST: db
   POSTGRES_DB_NAME: websocket_messages
+
 services:
   nginx:
     image: nginx:latest
@@ -22,6 +23,12 @@ services:
       - socket_db
       - token
       - db
+
+  db_init:
+    image: 'postgres:14.3'
+    environment:
+      << : *DB_SETTINGS
+    command: sh -c "PGPASSWORD=$${POSTGRES_PASSWORD} psql -c \"create database $${POSTGRES_DB_NAME};\" -U $${POSTGRES_USER} -h db"
 
   db:
     image: 'postgres:14.3'
