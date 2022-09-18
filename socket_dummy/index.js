@@ -4,7 +4,6 @@
 
 const WebSocket = require('ws');
 const wss = new WebSocket.Server({
-  host: process.env.HOST,
   port: process.env.PORT,
 });
 
@@ -141,19 +140,26 @@ const randomSeconds = (() => {
   return Math.max(800, Math.floor(Math.random() * 1000) + 500);
 });
 
+let submitting = false;
+
 const send = (ws => {
   const msg = JSON.stringify(output());
   const randomDelay = randomSeconds();
   console.log(randomDelay)
+  if (!submitting) { return; }
   ws.send(msg)
   setTimeout(() => send(ws), randomDelay)  // 終了するまで無限ループ
 });
 
-wss.on('close', function incoming(event) {
-  console.log(event);
-  console.log('close');
-})
-
 wss.on('connection', async function connection(ws) {
+  ws.on('close', function close(event) {
+    console.log(event);
+    console.log('close');
+    submitting = false;
+  })
+
+  console.log('open');
+  if (submitting) { return; }
+  submitting = true;
   send(ws);
 });
