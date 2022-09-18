@@ -18,11 +18,8 @@ services:
     volumes:
       - ./nginx:/etc/nginx/conf.d:ro
     restart: always
-    depends_on: 
-      # - socket_dummy
-      - socket_db
-      - token
-      - db
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   db_init:
     image: 'postgres:14.3'
@@ -61,17 +58,19 @@ services:
       - db
 
   # ダミーの値を流し続けるWebSocketサーバ
-  # socket_dummy:
-  #   build:
-  #     context: ./socket_dummy
-  #   init: true
-  #   ports:
-  #    - '5002:5002'
-  #   environment:
-  #     - PORT=5002
-  #   command:
-  #     - node
-  #     - index.js
+  socket_dummy:
+    build:
+      context: ./socket_dummy
+    init: true
+    ports:
+     - '5002:5002'
+    environment:
+      - PORT=5002
+    command:
+      - node
+      - index.js
+    depends_on:
+      - nginx
 
   # DBから取り出した値を流し続けるWebSocketサーバ
   socket_db:
@@ -90,6 +89,8 @@ services:
       - node
       - index.js
       - '2022-06-21T09:00:00'
+    depends_on:
+      - nginx
 
   token:
     build:
@@ -106,3 +107,5 @@ services:
     command:
       - node
       - index.js
+    depends_on:
+      - nginx
