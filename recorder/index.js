@@ -20,11 +20,6 @@ function initWebSocket () {
   return new WebSocket(server);
 }
 
-function createDbSql(dbName) {
-  return `SELECT 'CREATE DATABASE ${dbName}'
-    WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = '${dbName}');`
-}
-
 function createTableSql(stockCode) {
   return `CREATE TABLE IF NOT EXISTS stock_${stockCode}_raw (
       id SERIAL NOT NULL UNIQUE PRIMARY KEY,
@@ -52,17 +47,9 @@ async function initPg() {
     user: process.env.POSTGRES_USER,
     password: process.env.POSTGRES_PASSWORD,
     port: process.env.POSTGRES_PORT,
-    //database: process.env.POSTGRES_DB_NAME,
+    database: process.env.POSTGRES_DB_NAME,
   });
   const connect = await pool.connect();
-  const createDbSqlStatement = createDbSql(process.env.POSTGRES_DB_NAME);
-  console.log(createDbSqlStatement)
-  await connect.query(createDbSqlStatement);
-  for(const stockCode of [9468, 7974, 4751]) {
-    const sql = createTableSql(stockCode);
-    console.log({sql})
-    console.log(await connect.query(sql));
-  }
 
   return { pool, connect };
 }
@@ -83,7 +70,7 @@ function stockCodeFromMessage(message) {
   return message.Symbol
 }
 
-async function main({ pool, connect }) {
+async function main({ pool, connect, tableCreatedStockCodes }) {
   let currentTradingVolumeTime = null;
   let currentTradingVolume = 0;
 
@@ -100,7 +87,7 @@ async function main({ pool, connect }) {
     await exit({ connect, pool });
   });
 
-  ws.on('message', function message(data) {
+  ws.on('message', async function message(data) {
     if (debug) { console.log('%s', data.toString()); }
     const json = JSON.parse(data.toString());
     const tradingVolumeTime = json.TradingVolumeTime;
@@ -109,6 +96,11 @@ async function main({ pool, connect }) {
     }
     const tradingVolume = json.TradingVolume - currentTradingVolume;
     const stockCode = stockCodeFromMessage(json)
+    if(!tableCreatedStockCodes.includes(stockCode)) {
+      await createTable(stockCode);
+      tableCreatedStockCodes.push(stockCode);
+    }
+
     const sql = insertSql({ message: json, stockCode });
     currentTradingVolume, currentTradingVolumeTime = [tradingVolume, tradingVolumeTime];
     connect.query(sql).then(() => {
@@ -118,6 +110,12 @@ async function main({ pool, connect }) {
   });
 }
 
+async function createTable(stockCode) {
+  const sql = createTableSql(stockCode);
+  console.log({sql})
+  console.log(await connect.query(sql));
+}
+
 process.on('SIGINT', function() {
   console.log('SIGINT');
   exit();
@@ -125,6 +123,7 @@ process.on('SIGINT', function() {
 
 const ws = initWebSocket();
 const { pool, connect } = await initPg();
-(async ({ pool, connect }) => {
-  await main({ pool, connect });
+(async ({ pool, connect, tableCreatedStockCodes }) => {
+  const tableCreatedStockCodes = [];
+  await main({ pool, connect, tableCreatedStockCodes });
 })({ pool, connect });
