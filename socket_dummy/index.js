@@ -10,7 +10,7 @@ const wss = new WebSocket.Server({
 // https://note.kiriukun.com/entry/20191124-iso-8601-in-javascript
 const currentTime = () => new Date().toISOString().split('Z')[0] + '+09:00';
 
-const output = (() => {
+const output = ((stockCode) => {
   return {
     "OverSellQty": 187600, // OVER気配数量
     "UnderBuyQty": 115300, // UNDER気配数量
@@ -115,7 +115,7 @@ const output = (() => {
       "Price": 54750,
       "Qty": 400
     },
-    "Symbol": "7974", // 銘柄コード
+    "Symbol": stockCode, // 銘柄コード
     "SymbolName": "任天堂", // 銘柄名
     "CurrentPrice": 54850, // 現値
     "CurrentPriceTime": currentTime(), // 現値時刻
@@ -136,6 +136,11 @@ const output = (() => {
   }
 });
 
+const stockCode = () => {
+  const codes = process.env.STOCK_CODES || ['7974', '9468', '4751']
+  return codes[Math.floor(Math.random() * codes.length)]
+};
+
 const randomSeconds = (() => {
   return Math.max(800, Math.floor(Math.random() * 1000) + 500);
 });
@@ -143,7 +148,7 @@ const randomSeconds = (() => {
 let submitting = false;
 
 const send = (ws => {
-  const msg = JSON.stringify(output());
+  const msg = JSON.stringify(output(stockCode()));
   const randomDelay = randomSeconds();
   console.log(randomDelay)
   if (!submitting) { return; }
