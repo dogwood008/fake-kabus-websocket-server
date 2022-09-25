@@ -122,8 +122,8 @@ process.on('SIGINT', function() {
 })
 
 const ws = initWebSocket();
+const tableCreatedStockCodes = [];
 const { pool, connect } = await initPg();
 (async ({ pool, connect, tableCreatedStockCodes }) => {
-  const tableCreatedStockCodes = [];
   await main({ pool, connect, tableCreatedStockCodes });
-})({ pool, connect });
+})({ pool, connect, tableCreatedStockCodes });
