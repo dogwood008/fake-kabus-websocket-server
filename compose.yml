@@ -49,8 +49,10 @@ services:
       WEBSOCKET_PATH: $WEBSOCKET_PATH
       << : *DB_SETTINGS
     volumes:
-      - /app/node_modules
-      - ./recorder:/app:cached
+      - type: bind
+        source: ./recorder
+        target: /app
+      - recorder-nodemodules:/app/node_modules
     command:
       - node
       - index.js
@@ -88,7 +90,7 @@ services:
     command:
       - node
       - index.js
-      - '2022-06-21T09:00:00'
+      - ${START_DATETIME:-2022-06-21T09:00:00}
     depends_on:
       - nginx
 
@@ -109,3 +111,7 @@ services:
       - index.js
     depends_on:
       - nginx
+
+volumes:
+  recorder-nodemodules:
+    name: recorder-nodemodules
