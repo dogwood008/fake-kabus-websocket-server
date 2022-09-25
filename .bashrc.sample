@@ -1,4 +1,5 @@
 eval "$(direnv hook bash)"
+eval "$(nodenv init -)"
 
 export TZ=JST-9
 
