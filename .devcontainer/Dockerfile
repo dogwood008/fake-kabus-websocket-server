@@ -9,17 +9,18 @@ FROM mcr.microsoft.com/vscode/devcontainers/base:0-${VARIANT}
 # RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
 #     && apt-get -y install --no-install-recommends <your-package-list-here>
 
-COPY .bashrc .bashrc
 COPY .bash_profile .bash_profile
 
 RUN apt update && \
-  apt install -y vim postgresql direnv git && \
-  direnv allow && \
-  git clone https://github.com/nodenv/nodenv.git ~/.nodenv && \
-  cd ~/.nodenv && src/configure && make -C src && \
-  ~/.nodenv/bin/nodenv init && \
-  source ~/.bash_profile && \
-  curl -fsSL https://github.com/nodenv/nodenv-installer/raw/master/bin/nodenv-doctor | bash && \
+  apt install -y vim postgresql direnv git build-essential
+
+USER vscode
+RUN git clone https://github.com/nodenv/nodenv.git ~/.nodenv && \
+  cd ~/.nodenv && src/configure && make -C src
+ENV PATH /home/vscode/.nodenv/bin:${PATH}
+RUN eval "$(nodenv init -)" && \
   mkdir -p "$(nodenv root)"/plugins && \
   git clone https://github.com/nodenv/node-build.git "$(nodenv root)"/plugins/node-build && \
   nodenv install 16.17.0
+
+COPY .bashrc.sample .bashrc
