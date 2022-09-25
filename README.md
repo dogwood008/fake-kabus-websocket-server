@@ -64,13 +64,18 @@ https://kabucom.github.io/kabusapi/reference/index.html#tag/auth に相当する
 
 ## 0. 共通セットアップ
 
+全てのユースケースを実施する前に、共通して必要になるセットアップ。
+
 ```sh
 $ git clone https://github.com/dogwood008/fake-kabus-websocket-server.git
 $ cd fake-kabus-websocket-server
 $ docker compose build
+$ docker compose up db
+（メッセージがコンソール上に流れなくなってから）
+$ docker compose up db_init
 ```
 
-## 1. 固定値を返すだけのサーバを立てたい
+## 1. 固定値を返すだけのWebSocketサーバを立てたい
 
 ```sh
 $ docker compose up -d socket_dummy
@@ -214,6 +219,38 @@ $ docker compose up -d nginx
 ```
 
 </details>
+
+
+## 2. データベースに保存されたメッセージを取り出して流すWebSocketサーバを立てたい
+
+
+```sh
+$ docker compose up -d db
+$ START_DATETIME=2022-09-18T23:23:23 docker compose up -d socket_db
+$ docker compose up -d nginx
+```
+
+上記のコマンドを実行すると、 `ws://localhost:18080/kabusapi/websocket` でWebSocketサーバが立ち上がる。このサーバは事前に記録したメッセージを流し続ける。
+
+`docker compose up` の際に、 `START_DATETIME` に指定した日時以降のメッセージを流す。指定しない場合は、最古のメッセージから流し始める。
+
+
+## 3. WebSocketで流れているメッセージをデータベースに記録するサーバを立てたい
+
+```sh
+$ docker compose up -d db
+$ docker compose up -d recorder
+$ docker compose up -d nginx
+```
+
+上記のコマンドを実行すると、 `ws://localhost:18080/kabusapi/websocket` でWebSocketサーバが立ち上がる。このサーバはWebSocketで流れてくるメッセージをデータベースに記録する。
+
+記録したデータは、前章「2. データベースに保存されたメッセージを取り出して流すWebSocketサーバを立てたい」で指定した方法でWebSocketメッセージとして流すことができる。
+
+
+
+---
+
 
 ### 待ち受け
 
