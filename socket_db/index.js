@@ -56,4 +56,5 @@ const main = async (fromDt) => {
 console.log('socket_db started.')
 const args = process.argv.slice(2, process.argv.length)
 const fromDt = args[0] // '2022-06-21T09:00:00';
+console.log('fromDt:', fromDt)
 await main(fromDt);
