@@ -8,6 +8,7 @@ x-db-settings: &DB_SETTINGS
   POSTGRES_PORT: '5432'
   POSTGRES_HOST: db
   POSTGRES_DB_NAME: websocket_messages
+  POSTGRES_COMMON_TABLE_NAME: stocks
 
 services:
   nginx:
@@ -47,7 +48,6 @@ services:
       HOST: $HOST
       PORT: $PORT
       WEBSOCKET_PATH: $WEBSOCKET_PATH
-      POSTGRES_DB_NAME: $POSTGRES_DB_NAME
       STOCK_CODES: $STOCK_CODES
       << : *DB_SETTINGS
     volumes:
