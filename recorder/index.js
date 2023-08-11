@@ -7,7 +7,6 @@ import WebSocket from 'ws';
 // ref: https://stackoverflow.com/q/70306590/15983717
 import pg from 'pg';
 const { Pool } = pg;
-const debug = !!process.env.DEBUG;
 
 function initWebSocket () {
   const protocol = process.env.PROTOCOL;
@@ -31,13 +30,13 @@ async function createDb(dbName, connect) {
   await connect.query(createDbSqlStatement);
 }
 
-async function createTable(stockCode, connect) {
-  const sql = createTableSql(stockCode);
+async function createTable({ stockCode, connect, commonTableName }) {
+  const sql = createTableSql({ stockCode, commonTableName });
   console.log({sql})
   console.log(await connect.query(sql));
 }
 
-function createTableSql(stockCode) {
+function createTableSql({ stockCode, commonTableName }) {
   return `CREATE TABLE IF NOT EXISTS stock_${stockCode}_raw (
       id SERIAL NOT NULL UNIQUE PRIMARY KEY,
       datetime TIMESTAMP NOT NULL,
@@ -46,18 +45,62 @@ function createTableSql(stockCode) {
     + ` CREATE INDEX IF NOT EXISTS stock_${stockCode}_raw_id_index`
     + ` ON stock_${stockCode}_raw (id);`
     + ` CREATE INDEX IF NOT EXISTS stock_${stockCode}_raw_datetime_index`
-    + ` ON stock_${stockCode}_raw (datetime);`;
+    + ` ON stock_${stockCode}_raw (datetime);`
+    + ` CREATE TABLE IF NOT EXISTS ${commonTableName} (
+      id SERIAL NOT NULL UNIQUE PRIMARY KEY,
+      datetime TIMESTAMP NOT NULL,
+      stockcode TEXT NOT NULL,
+      price DECIMAL NOT NULL,
+      volume INTEGER NOT NULL,
+      accumulated_volume INTEGER NOT NULL
+    );`
+    + ` CREATE INDEX IF NOT EXISTS ${commonTableName}_id_index`
+    + ` ON ${commonTableName} (id);`
+    + ` CREATE INDEX IF NOT EXISTS ${commonTableName}_datetime_index`
+    + ` ON ${commonTableName} (datetime);`
+    + ` CREATE INDEX IF NOT EXISTS ${commonTableName}_stockcode_index`
+    + ` ON ${commonTableName} (stockcode);`
+    + ` CREATE INDEX IF NOT EXISTS ${commonTableName}_stockcode_datetime_index`
+    + ` ON ${commonTableName} (stockcode, datetime);`
 }
 
-function insertSql({ json, stockCode }) {
+function insertRawJsonMessageSql({ json }) {
   const dateTime = json.TradingVolumeTime;
+  const stockCode = json.Symbol;
   return `INSERT INTO stock_${stockCode}_raw (datetime, data) VALUES (
     '${dateTime}',
     '${JSON.stringify(json)}'
-  );`
+    );`;
 }
 
-async function initPg(initializeStockCodes = []) {
+function insertRawJsonMessage({ json, connect, debug }) {
+  const sql = insertRawJsonMessageSql({ json });
+  const output = debug ?
+    () => console.log(`[Raw] [${json.Symbol}] ${json.TradingVolumeTime} ${JSON.stringify(json)}`) : null;
+  connect.query(sql).then(output).catch((err) => console.error(err));
+}
+
+function insertTickDataSql({ price, volume, accumulatedVolume, json, commonTableName }) {
+  const { dateTime, stockCode } = valuesFromJson(json);
+  return `INSERT INTO ${commonTableName} (datetime, stockcode, price, volume, accumulated_volume) VALUES (
+    '${dateTime}',
+    '${stockCode}',
+    '${price}',
+    '${volume}',
+    '${accumulatedVolume}'
+    );`;
+}
+
+function insertTickData({ volume, accumulatedVolume, json, commonTableName, connect, verbose }) {
+  const { dateTime, price } = valuesFromJson(json);
+  const sql = insertTickDataSql({ price, volume, accumulatedVolume, json, commonTableName, connect });
+  const stockCode = json.Symbol;
+  const output = verbose ?
+    () => console.log(`[Tick] [${stockCode}] ${dateTime} JPY: ${price.toString().padStart(5, ' ')} / Vol: ${volume.toString().padStart(7, ' ')} (${accumulatedVolume.toString().padStart(7, ' ')})`) : null;
+  connect.query(sql).then(output).catch((err) => console.error(err));
+}
+
+async function initPg({ initializeStockCodes = [], commonTableName }) {
   const pool = new Pool({
     host: process.env.POSTGRES_HOST,
     user: process.env.POSTGRES_USER,
@@ -67,8 +110,10 @@ async function initPg(initializeStockCodes = []) {
   });
   const connect = await pool.connect();
   await createDb(process.env.POSTGRES_DB_NAME, connect);
+  console.log({ initializeStockCodes })
   for(const stockCode of initializeStockCodes) {
-    await createTable(stockCode, connect);
+    console.log(stockCode)
+    await createTable({ stockCode, connect, commonTableName });
   }
 
   return { pool, connect };
@@ -78,7 +123,8 @@ function valuesFromJson(json) {
   const dateTime = json.TradingVolumeTime;
   const volume = json.TradingVolume;
   const price = json.CalcPrice;
-  return { dateTime, volume, price };
+  const stockCode = json.Symbol;
+  return { dateTime, volume, price, stockCode };
 }
 
 async function exit(connect, pool) {
@@ -86,9 +132,9 @@ async function exit(connect, pool) {
   await pool.end();
 }
 
-async function main({ pool, connect, tableCreatedStockCodes }) {
+async function main({ pool, connect, commonTableName, debug, verbose }) {
   let currentTradingVolumeTime = null;
-  let currentTradingVolume = 0;
+  let currentTradingAccumulatedVolume = 0;
 
   ws.on('open', function open() {
     console.log('open');
@@ -107,17 +153,19 @@ async function main({ pool, connect, tableCreatedStockCodes }) {
     if (debug) { console.log('%s', data.toString()); }
     const json = JSON.parse(data.toString());
     const tradingVolumeTime = json.TradingVolumeTime;
+    insertRawJsonMessage({ json, connect, debug }) // 全てのメッセージを保存
+
     if (currentTradingVolumeTime === tradingVolumeTime) {
+      // 取引量が変わっていなかったら、新規メッセージが到着しても共通テーブルに入れない
       return;
     }
-    const tradingVolume = json.TradingVolume - currentTradingVolume;
-    const stockCode = json.Symbol
-    const sql = insertSql({ json, stockCode });
-    currentTradingVolume, currentTradingVolumeTime = [tradingVolume, tradingVolumeTime];
-    connect.query(sql).then(() => {
-      const { dateTime, volume, price } = valuesFromJson(json);
-      console.log(`[${stockCode}] ${dateTime} ${price} ${volume}` );
-    }, (err) => { console.error(err); });
+
+    const accumulatedVolume = json.TradingVolume;
+    const volume = accumulatedVolume - currentTradingAccumulatedVolume
+    currentTradingAccumulatedVolume = accumulatedVolume;
+    currentTradingVolumeTime = tradingVolumeTime;
+
+    insertTickData({ volume, accumulatedVolume, json, commonTableName, connect, verbose })
   });
 }
 
@@ -126,9 +174,15 @@ process.on('SIGINT', function() {
   exit();
 })
 
+const args = process.argv.slice(2, process.argv.length)
+const debug = !!process.env.DEBUG;
+const verbose = args[0] === '--verbose'
+
+const commonTableName = process.env.POSTGRES_COMMON_TABLE_NAME;
 const ws = initWebSocket();
-const stockCodes = process.env.STOCK_CODES.split(',');
-const { pool, connect } = await initPg(stockCodes);
-(async ({ pool, connect }) => {
-  await main({pool, connect });
-})({ pool, connect });
+const initializeStockCodes = process.env.STOCK_CODES.split(',');
+const { pool, connect } = await initPg({ initializeStockCodes, commonTableName });
+
+(async ({ pool, connect, commonTableName, debug, verbose }) => {
+  await main({pool, connect, commonTableName, debug, verbose });
+})({ pool, connect, commonTableName, debug, verbose});
