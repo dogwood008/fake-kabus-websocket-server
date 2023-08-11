@@ -37,15 +37,15 @@ function createTableSql(stockCode) {
     + ` ON stock_${stockCode}_raw (datetime);`;
 }
 
-function insertSql({ message, stockCode }) {
-  const dateTime = message.TradingVolumeTime;
+function insertSql({ json, stockCode }) {
+  const dateTime = json.TradingVolumeTime;
   return `INSERT INTO stock_${stockCode}_raw (datetime, data) VALUES (
     '${dateTime}',
-    '${JSON.stringify(message)}'
+    '${JSON.stringify(json)}'
   );`
 }
 
-async function initPg() {
+async function initPg(initializeStockCodes = []) {
   const pool = new Pool({
     host: process.env.POSTGRES_HOST,
     user: process.env.POSTGRES_USER,
@@ -57,7 +57,7 @@ async function initPg() {
   const createDbSqlStatement = createDbSql(process.env.POSTGRES_DB_NAME);
   console.log(createDbSqlStatement)
   await connect.query(createDbSqlStatement);
-  for(const stockCode of ['9468']) {
+  for(const stockCode of initializeStockCodes) {
     const sql = createTableSql(stockCode);
     console.log({sql})
     console.log(await connect.query(sql));
@@ -71,10 +71,17 @@ async function exit(connect, pool) {
   await pool.end();
 }
 
+function valuesFromJson(json, stockCode) {
+  return {
+    dateTime: json.TradingVolumeTime,
+    volume: json.TradingVolume,
+    price: json.CurrentPrice,
+  }
+}
+
 async function main({ pool, connect }) {
   let currentTradingVolumeTime = null;
   let currentTradingVolume = 0;
-  const stockCode = 7974;
 
   ws.on('open', function open() {
     console.log('open');
@@ -97,6 +104,7 @@ async function main({ pool, connect }) {
       return;
     }
     const tradingVolume = json.TradingVolume - currentTradingVolume;
+    const stockCode = json.Symbol
     const sql = insertSql({ json, stockCode });
     currentTradingVolume, currentTradingVolumeTime = [tradingVolume, tradingVolumeTime];
     connect.query(sql).then(() => {
@@ -112,7 +120,8 @@ process.on('SIGINT', function() {
 })
 
 const ws = initWebSocket();
-const { pool, connect } = await initPg();
+const stockCodes = process.env.STOCK_CODES.split(',');
+const { pool, connect } = await initPg(stockCodes);
 (async ({ pool, connect }) => {
-  await main({ pool, connect });
+  await main({pool, connect });
 })({ pool, connect });
