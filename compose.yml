@@ -47,6 +47,8 @@ services:
       HOST: $HOST
       PORT: $PORT
       WEBSOCKET_PATH: $WEBSOCKET_PATH
+      POSTGRES_DB_NAME: $POSTGRES_DB_NAME
+      STOCK_CODES: $STOCK_CODES
       << : *DB_SETTINGS
     volumes:
       - type: bind
