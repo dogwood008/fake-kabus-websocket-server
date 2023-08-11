@@ -21,8 +21,20 @@ function initWebSocket () {
 }
 
 function createDbSql(dbName) {
-  return `SELECT 'CREATE DATABASE ${dbName}'
-    WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = '${dbName}');`
+   return `SELECT 'CREATE DATABASE ${dbName}'
+      WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = '${dbName}');`
+}
+
+async function createDb(dbName, connect) {
+  const createDbSqlStatement = createDbSql(dbName);
+  console.log(createDbSqlStatement)
+  await connect.query(createDbSqlStatement);
+}
+
+async function createTable(stockCode, connect) {
+  const sql = createTableSql(stockCode);
+  console.log({sql})
+  console.log(await connect.query(sql));
 }
 
 function createTableSql(stockCode) {
@@ -54,16 +66,19 @@ async function initPg(initializeStockCodes = []) {
     database: process.env.POSTGRES_DB_NAME,
   });
   const connect = await pool.connect();
-  const createDbSqlStatement = createDbSql(process.env.POSTGRES_DB_NAME);
-  console.log(createDbSqlStatement)
-  await connect.query(createDbSqlStatement);
+  await createDb(process.env.POSTGRES_DB_NAME, connect);
   for(const stockCode of initializeStockCodes) {
-    const sql = createTableSql(stockCode);
-    console.log({sql})
-    console.log(await connect.query(sql));
+    await createTable(stockCode, connect);
   }
 
   return { pool, connect };
+}
+
+function valuesFromJson(json) {
+  const dateTime = json.TradingVolumeTime;
+  const volume = json.TradingVolume;
+  const price = json.CalcPrice;
+  return { dateTime, volume, price };
 }
 
 async function exit(connect, pool) {
@@ -71,15 +86,7 @@ async function exit(connect, pool) {
   await pool.end();
 }
 
-function valuesFromJson(json, stockCode) {
-  return {
-    dateTime: json.TradingVolumeTime,
-    volume: json.TradingVolume,
-    price: json.CurrentPrice,
-  }
-}
-
-async function main({ pool, connect }) {
+async function main({ pool, connect, tableCreatedStockCodes }) {
   let currentTradingVolumeTime = null;
   let currentTradingVolume = 0;
 
@@ -96,7 +103,7 @@ async function main({ pool, connect }) {
     await exit({ connect, pool });
   });
 
-  ws.on('message', function message(data) {
+  ws.on('message', async function message(data) {
     if (debug) { console.log('%s', data.toString()); }
     const json = JSON.parse(data.toString());
     const tradingVolumeTime = json.TradingVolumeTime;
@@ -108,7 +115,7 @@ async function main({ pool, connect }) {
     const sql = insertSql({ json, stockCode });
     currentTradingVolume, currentTradingVolumeTime = [tradingVolume, tradingVolumeTime];
     connect.query(sql).then(() => {
-      const { dateTime, volume, price } = valuesFromJson(json, stockCode);
+      const { dateTime, volume, price } = valuesFromJson(json);
       console.log(`[${stockCode}] ${dateTime} ${price} ${volume}` );
     }, (err) => { console.error(err); });
   });
