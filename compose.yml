@@ -1,11 +1,14 @@
 # https://ashwin9798.medium.com/nginx-with-docker-and-node-js-a-beginners-guide-434fe1216b6b
 
+version: '3'
+
 x-db-settings: &DB_SETTINGS
   POSTGRES_USER: postgres
   POSTGRES_PASSWORD: postgres
   POSTGRES_PORT: '5432'
   POSTGRES_HOST: db
   POSTGRES_DB_NAME: websocket_messages
+
 services:
   nginx:
     image: nginx:latest
@@ -15,11 +18,14 @@ services:
     volumes:
       - ./nginx:/etc/nginx/conf.d:ro
     restart: always
-    depends_on: 
-      # - socket_dummy
-      - socket_db
-      - token
-      - db
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  db_init:
+    image: 'postgres:14.3'
+    environment:
+      << : *DB_SETTINGS
+    command: sh -c "PGPASSWORD=$${POSTGRES_PASSWORD} psql -c \"create database $${POSTGRES_DB_NAME};\" -U $${POSTGRES_USER} -h db"
 
   db:
     image: 'postgres:14.3'
@@ -43,8 +49,10 @@ services:
       WEBSOCKET_PATH: $WEBSOCKET_PATH
       << : *DB_SETTINGS
     volumes:
-      - /app/node_modules
-      - ./recorder:/app:cached
+      - type: bind
+        source: ./recorder
+        target: /app
+      - recorder-nodemodules:/app/node_modules
     command:
       - node
       - index.js
@@ -52,17 +60,19 @@ services:
       - db
 
   # ダミーの値を流し続けるWebSocketサーバ
-  # socket_dummy:
-  #   build:
-  #     context: ./socket_dummy
-  #   init: true
-  #   ports:
-  #    - '5002:5002'
-  #   environment:
-  #     - PORT=5002
-  #   command:
-  #     - node
-  #     - index.js
+  socket_dummy:
+    build:
+      context: ./socket_dummy
+    init: true
+    ports:
+     - '5002:5002'
+    environment:
+      - PORT=5002
+    command:
+      - node
+      - index.js
+    depends_on:
+      - nginx
 
   # DBから取り出した値を流し続けるWebSocketサーバ
   socket_db:
@@ -80,7 +90,9 @@ services:
     command:
       - node
       - index.js
-      - '2022-06-21T09:00:00'
+      - ${START_DATETIME:-2022-06-21T09:00:00}
+    depends_on:
+      - nginx
 
   token:
     build:
@@ -97,3 +109,9 @@ services:
     command:
       - node
       - index.js
+    depends_on:
+      - nginx
+
+volumes:
+  recorder-nodemodules:
+    name: recorder-nodemodules

@@ -6,4 +6,3 @@ COPY package-lock.json package-lock.json
 RUN npm ci
 
 COPY index.js index.js
-COPY token.js token.js

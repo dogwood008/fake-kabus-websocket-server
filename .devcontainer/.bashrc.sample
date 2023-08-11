@@ -1,0 +1,10 @@
+eval "$(direnv hook bash)"
+eval "$(nodenv init -)"
+
+export TZ=JST-9
+
+export EDITOR=vim
+export GIT_EDITOR="/usr/bin/vim"
+
+export DOCKER_BUILDKIT=1
+export COMPOSE_DOCKER_CLI_BUILD=1

@@ -1,1 +1,6 @@
 recorder/node_modules/
+.bashrc
+*.zip
+*.dump
+postgresql
+.envrc

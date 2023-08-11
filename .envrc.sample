@@ -1,0 +1,4 @@
+export PROTOCOL=ws
+export HOST=host.docker.internal
+export PORT=18080
+export WEBSOCKET_PATH=/kabusapi/websocket
