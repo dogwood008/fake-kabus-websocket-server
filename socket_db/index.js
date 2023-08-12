@@ -9,9 +9,8 @@ import { LoopProcedure } from './loop_procedure.js';
 
 const debug = !!process.env.DEBUG;
 
-const main = async (fromDt) => {
+const main = async (fromDt, stockCode) => {
   try {
-    const stockCode = 7974;
     const dbManager = new DBManager({});
     const loopProcedure = await LoopProcedure.build({ dbManager, stockCode, fromDt, verbose: true });
     let fetchMessagesSub, prefetchDbSub;
@@ -31,11 +30,12 @@ const main = async (fromDt) => {
       }
       isStarted = true
       fetchMessagesSub = await loopProcedure.fetchMessagesOnEachSeconds({ callback: currentValues => {
+          // currentValuesはArray<String>
           console.log(currentValues);
           if (!currentValues.length) { return; }
-          //websocket.send(currentValues);
-          const msg = JSON.stringify(currentValues);
-          websocket.send(msg);
+          for (const currentValue of currentValues) {
+            websocket.send(currentValue);
+          }
         }
       });
       prefetchDbSub = await loopProcedure.prefetchFromDb({});
@@ -47,6 +47,7 @@ const main = async (fromDt) => {
       isStarted = false;
       reStart = true;
     })
+    console.log("OK, I'm ready. Please start the client.")
 
   } catch (e) {
     console.error(e);
@@ -56,5 +57,7 @@ const main = async (fromDt) => {
 console.log('socket_db started.')
 const args = process.argv.slice(2, process.argv.length)
 const fromDt = args[0] // '2022-06-21T09:00:00';
+const stockCode = process.env.STOCK_CODES?.split(',')[0] || args[1] || '7974';
 console.log('fromDt:', fromDt)
-await main(fromDt);
+console.log('stockCode:', stockCode)
+await main(fromDt, stockCode);

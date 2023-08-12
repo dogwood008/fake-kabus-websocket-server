@@ -84,6 +84,7 @@ services:
     ports:
      - '5002:5002'
     environment:
+      STOCK_CODES: $STOCK_CODES
       << : *DB_SETTINGS
       PORT: 5002
     volumes:
