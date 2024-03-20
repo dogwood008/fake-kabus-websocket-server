@@ -23,18 +23,18 @@ services:
       - "host.docker.internal:host-gateway"
 
   db_init:
-    image: 'postgres:14.3'
+    image: 'postgres:16.2'
     environment:
       << : *DB_SETTINGS
     command: sh -c "PGPASSWORD=$${POSTGRES_PASSWORD} psql -c \"create database $${POSTGRES_DB_NAME};\" -U $${POSTGRES_USER} -h db"
 
   db:
-    image: 'postgres:14.3'
+    image: 'postgres:16.2'
     environment:
       << : *DB_SETTINGS
       PGDATA: /var/lib/postgresql/data
     volumes:
-      - ./postgresql/data14:/var/lib/postgresql/data:delegated
+      - ./postgresql/data16:/var/lib/postgresql/data:delegated
     ports:
       - '5432:5432'
 
