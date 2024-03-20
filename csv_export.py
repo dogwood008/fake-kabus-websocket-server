@@ -11,6 +11,7 @@ def extract_data(date: str, cur: psycopg2.extensions.cursor) -> list:
 
     # Query to select newly created records
     query = f"SELECT * FROM {table_name} WHERE datetime::date = '{date}'"
+    print(query)
 
     # Execute the query
     cur.execute(query)
@@ -56,17 +57,37 @@ def zip_csv(path_to_csv_file: str):
         print(f'path_to_zipfile: {path_to_zip_file}')
         zipf.write(path_to_csv_file, os.path.basename(path_to_csv_file))
 
+def delete_data_of_the_date(date: str, table_name: str, cur: psycopg2.extensions.cursor):
+    # Query to delete records
+    query = f"DELETE FROM {table_name} WHERE datetime::date = '{date}'"
+    print(query)
+
+    # Execute the query
+    cur.execute(query)
 
 def main():
     cur, conn = open_db()
     # Get today's date
     # Get the first argument from the command line arguments
     print(f'argv: {sys.argv}')
-    arg = sys.argv[1]
-    print(f'arg: {arg}')
+    try:
+        delete_flag = sys.argv[2] == 'delete'
+    except:
+        delete_flag = False
+    try:
+        if sys.argv[1] == 'delete':
+            delete_flag = True
+            given_date = None
+        else:
+            given_date = sys.argv[1]
+    except:
+        given_date = None
+        delete_flag = False
+    print(f'given_date: {given_date}')
+    print(f'delete_flag: {delete_flag}')
 
     # Convert the argument to a date object
-    today = arg or date.today()
+    today = given_date or date.today()
     print('export start')
     print(f'today: {today}')
 
@@ -75,6 +96,11 @@ def main():
     print(f'path_to_csv_file: {path_to_csv_file}')
     output_csv(path_to_csv_file=path_to_csv_file, records=records)
     zip_csv(path_to_csv_file)
+
+    if delete_flag:
+        print('delete start')
+        delete_data_of_the_date(today, 'stock_9983_raw', cur)
+        print('delete done')
 
     close_db(cur, conn)
 
