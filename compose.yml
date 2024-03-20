@@ -115,6 +115,13 @@ services:
     depends_on:
       - nginx
 
+  export:
+    build: .
+    environment:
+      << : *DB_SETTINGS
+    volumes:
+      - ./:/app
+
 volumes:
   recorder-nodemodules:
     name: recorder-nodemodules
