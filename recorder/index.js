@@ -30,22 +30,27 @@ async function createDb(dbName, connect) {
   await connect.query(createDbSqlStatement);
 }
 
-async function createTable({ stockCode, connect, commonTableName }) {
-  const sql = createTableSql({ stockCode, commonTableName });
+async function createTable({ connect, commonTableName }) {
+  const sql = createTableSql({ commonTableName });
   console.log({sql})
   console.log(await connect.query(sql));
 }
 
-function createTableSql({ stockCode, commonTableName }) {
-  return `CREATE TABLE IF NOT EXISTS stock_${stockCode}_raw (
+function createTableSql({ commonTableName }) {
+  return `CREATE TABLE IF NOT EXISTS stock_raw (
       id SERIAL NOT NULL UNIQUE PRIMARY KEY,
+      stockcode VARCHAR(9) NOT NULL,
       datetime TIMESTAMP NOT NULL,
       data TEXT NOT NULL
     );`
-    + ` CREATE INDEX IF NOT EXISTS stock_${stockCode}_raw_id_index`
-    + ` ON stock_${stockCode}_raw (id);`
-    + ` CREATE INDEX IF NOT EXISTS stock_${stockCode}_raw_datetime_index`
-    + ` ON stock_${stockCode}_raw (datetime);`
+    + ` CREATE INDEX IF NOT EXISTS stock_raw_id_index`
+    + ` ON stock_raw (id);`
+    + ` CREATE INDEX IF NOT EXISTS stock_raw_stockcode_index`
+    + ` ON stock_raw (stockcode);`
+    + ` CREATE INDEX IF NOT EXISTS stock_raw_datetime_index`
+    + ` ON stock_raw (datetime);`
+    + ` CREATE INDEX IF NOT EXISTS stock_raw_stock_code_datetime_index`
+    + ` ON stock_raw (stockcode, datetime);`
     + ` CREATE TABLE IF NOT EXISTS ${commonTableName} (
       id SERIAL NOT NULL UNIQUE PRIMARY KEY,
       datetime TIMESTAMP NOT NULL,
@@ -67,7 +72,8 @@ function createTableSql({ stockCode, commonTableName }) {
 function insertRawJsonMessageSql({ json }) {
   const dateTime = json.TradingVolumeTime;
   const stockCode = json.Symbol;
-  return `INSERT INTO stock_${stockCode}_raw (datetime, data) VALUES (
+  return `INSERT INTO stock_raw (stockcode, datetime, data) VALUES (
+    '${stockCode}',
     '${dateTime}',
     '${JSON.stringify(json)}'
     );`;
@@ -100,7 +106,7 @@ function insertTickData({ volume, accumulatedVolume, json, commonTableName, conn
   connect.query(sql).then(output).catch((err) => console.error(err));
 }
 
-async function initPg({ initializeStockCodes = [], commonTableName }) {
+async function initPg({ commonTableName }) {
   const pool = new Pool({
     host: process.env.POSTGRES_HOST,
     user: process.env.POSTGRES_USER,
@@ -110,11 +116,7 @@ async function initPg({ initializeStockCodes = [], commonTableName }) {
   });
   const connect = await pool.connect();
   await createDb(process.env.POSTGRES_DB_NAME, connect);
-  console.log({ initializeStockCodes })
-  for(const stockCode of initializeStockCodes) {
-    console.log(stockCode)
-    await createTable({ stockCode, connect, commonTableName });
-  }
+  await createTable({ connect, commonTableName });
 
   return { pool, connect };
 }
@@ -180,8 +182,7 @@ const verbose = args[0] === '--verbose'
 
 const commonTableName = process.env.POSTGRES_COMMON_TABLE_NAME;
 const ws = initWebSocket();
-const initializeStockCodes = process.env.STOCK_CODES.split(',');
-const { pool, connect } = await initPg({ initializeStockCodes, commonTableName });
+const { pool, connect } = await initPg({ commonTableName });
 
 (async ({ pool, connect, commonTableName, debug, verbose }) => {
   await main({pool, connect, commonTableName, debug, verbose });
