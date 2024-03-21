@@ -48,7 +48,6 @@ services:
       HOST: $HOST
       PORT: $PORT
       WEBSOCKET_PATH: $WEBSOCKET_PATH
-      STOCK_CODES: $STOCK_CODES
       << : *DB_SETTINGS
     volumes:
       - type: bind
