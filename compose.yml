@@ -116,12 +116,18 @@ services:
     depends_on:
       - nginx
 
-  export:
-    build: .
+  export_data:
+    build:
+      context: ./export_data
     environment:
       << : *DB_SETTINGS
-    volumes:
-      - ./:/app
+    # うまくマウントできない
+    #volumes:
+    #  - type: bind
+    #    source: ./export_data
+    #    target: /app
+    depends_on:
+      - db
 
 volumes:
   recorder-nodemodules:
