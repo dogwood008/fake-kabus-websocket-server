@@ -1,7 +1,5 @@
 # https://ashwin9798.medium.com/nginx-with-docker-and-node-js-a-beginners-guide-434fe1216b6b
 
-version: '3'
-
 x-db-settings: &DB_SETTINGS
   POSTGRES_USER: postgres
   POSTGRES_PASSWORD: postgres
@@ -34,7 +32,9 @@ services:
       << : *DB_SETTINGS
       PGDATA: /var/lib/postgresql/data
     volumes:
-      - ./postgresql/data16:/var/lib/postgresql/data:delegated
+      - type: bind
+        source: ${LOCAL_WORKSPACE_FOLDER:-.}/postgresql/data16
+        target: /var/lib/postgresql/data:delegated
     ports:
       - '5432:5432'
 
@@ -53,7 +53,7 @@ services:
       << : *DB_SETTINGS
     volumes:
       - type: bind
-        source: ./recorder
+        source: ${LOCAL_WORKSPACE_FOLDER:-.}/recorder
         target: /app
       - recorder-nodemodules:/app/node_modules
     command:
@@ -121,11 +121,10 @@ services:
       context: ./export_data
     environment:
       << : *DB_SETTINGS
-    # うまくマウントできない
-    #volumes:
-    #  - type: bind
-    #    source: ./export_data
-    #    target: /app
+    volumes:
+      - type: bind
+        source: ${LOCAL_WORKSPACE_FOLDER:-.}/export_data
+        target: /app
     depends_on:
       - db
 

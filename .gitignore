@@ -1,5 +1,6 @@
 recorder/node_modules/
 .bashrc
+.bashrc.my
 *.zip
 *.dump
 postgresql

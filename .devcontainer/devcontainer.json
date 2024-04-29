@@ -6,28 +6,35 @@
 		"dockerfile": "Dockerfile",
 		// Update 'VARIANT' to pick an Ubuntu version: jammy / ubuntu-22.04, focal / ubuntu-20.04, bionic /ubuntu-18.04
 		// Use ubuntu-22.04 or ubuntu-18.04 on local arm64/Apple Silicon.
-		"args": { "VARIANT": "ubuntu-22.04" }
+		"args": {
+			"VARIANT": "ubuntu-22.04"
+		}
 	},
-
 	// Use 'forwardPorts' to make a list of ports inside the container available locally.
 	// "forwardPorts": [],
-
 	// Use 'postCreateCommand' to run commands after the container is created.
 	// "postCreateCommand": "uname -a",
-
 	// Comment out to connect as root instead. More info: https://aka.ms/vscode-remote/containers/non-root.
 	"remoteUser": "vscode",
 	"features": {
 		"docker-from-docker": "latest",
 		"git": "latest"
 	},
-
 	"customizations": {
-    "vscode": {
+		"vscode": {
 			"extensions": [
 				"ckolkman.vscode-postgres",
 				"GitHub.copilot",
-      ]
+			]
 		}
-	}
+	},
+	"runArgs": [
+		"--add-host=host.docker.internal:host-gateway"
+	],
+	"workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind",
+	"workspaceFolder": "/workspace",
+	"initializeCommand": "touch ./.devcontainer/.bashrc.my && cat ./.devcontainer/.bashrc.sample > ./.devcontainer/.bashrc && cat ./.devcontainer/.bashrc.my >> ./.devcontainer/.bashrc",
+	"remoteEnv": {
+		"LOCAL_WORKSPACE_FOLDER": "${localWorkspaceFolder}"
+	},
 }
