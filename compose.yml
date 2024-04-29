@@ -34,7 +34,7 @@ services:
     volumes:
       - type: bind
         source: ${LOCAL_WORKSPACE_FOLDER:-.}/postgresql/data16
-        target: /var/lib/postgresql/data:delegated
+        target: /var/lib/postgresql/data
     ports:
       - '5432:5432'
 
