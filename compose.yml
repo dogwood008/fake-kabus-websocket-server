@@ -127,6 +127,7 @@ services:
         target: /app
     depends_on:
       - db
+    command: ${ARGS}
 
 volumes:
   recorder-nodemodules:
