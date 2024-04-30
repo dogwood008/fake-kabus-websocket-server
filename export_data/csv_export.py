@@ -4,11 +4,10 @@ from datetime import date
 import os
 import sys
 import zipfile
+import argparse
 
 
-def extract_data(date: str, cur: psycopg2.extensions.cursor) -> list:
-    table_name = 'stock_9983_raw'
-
+def extract_data(date: str, cur: psycopg2.extensions.cursor, table_name: str = 'stock_raw') -> list:
     # Query to select newly created records
     query = f"SELECT * FROM {table_name} WHERE datetime::date = '{date}'"
     print(query)
@@ -65,41 +64,43 @@ def delete_data_of_the_date(date: str, table_name: str, cur: psycopg2.extensions
     # Execute the query
     cur.execute(query)
 
+def parse_args():
+    """
+    Parse command line arguments for CSV Export.
+
+    Returns:
+        date (str): The date in YYYY-MM-DD format.
+        delete (bool): True if the delete flag is set, False otherwise.
+    """
+    parser = argparse.ArgumentParser(description='CSV Export')
+    parser.add_argument('--date', nargs='?', help='Date in YYYY-MM-DD format')
+    parser.add_argument('--skip-delete', action='store_true', help='Skip deleting records for the given date')
+    args = parser.parse_args()
+    return args.date, args.skip_delete
+
 def main():
     cur, conn = open_db()
     # Get today's date
     # Get the first argument from the command line arguments
-    print(f'argv: {sys.argv}')
-    try:
-        delete_flag = sys.argv[2] == 'delete'
-    except:
-        delete_flag = False
-    try:
-        if sys.argv[1] == 'delete':
-            delete_flag = True
-            given_date = None
-        else:
-            given_date = sys.argv[1]
-    except:
-        given_date = None
-        delete_flag = False
+    given_date, skip_delete_flag = parse_args()
     print(f'given_date: {given_date}')
-    print(f'delete_flag: {delete_flag}')
+    print(f'skip_delete_flag: {skip_delete_flag}')
 
     # Convert the argument to a date object
     today = given_date or date.today()
     print('export start')
     print(f'today: {today}')
 
+    table_name = 'stock_raw'
     records = extract_data(today, cur)
     path_to_csv_file = f'export_{today}.csv'
     print(f'path_to_csv_file: {path_to_csv_file}')
     output_csv(path_to_csv_file=path_to_csv_file, records=records)
     zip_csv(path_to_csv_file)
 
-    if delete_flag:
+    if not skip_delete_flag:
         print('delete start')
-        delete_data_of_the_date(today, 'stock_9983_raw', cur)
+        delete_data_of_the_date(today, table_name, cur)
         print('delete done')
 
     close_db(cur, conn)
