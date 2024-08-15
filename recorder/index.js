@@ -70,7 +70,7 @@ function createTableSql({ commonTableName }) {
 }
 
 function insertRawJsonMessageSql({ json }) {
-  const dateTime = json.TradingVolumeTime;
+  const dateTime = json.TradingVolumeTime || new Date().toISOString();
   const stockCode = json.Symbol;
   return `INSERT INTO stock_raw (stockcode, datetime, data) VALUES (
     '${stockCode}',
